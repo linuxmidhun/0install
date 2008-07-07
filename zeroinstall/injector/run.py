@@ -8,7 +8,7 @@ Executes a set of implementations as a program.
 import os, sys
 from logging import debug, info
 
-from zeroinstall.injector.model import Interface, SafeException, EnvironmentBinding, DistributionImplementation, ZeroInstallImplementation
+from zeroinstall.injector.model import Interface, SafeException, EnvironmentBinding, DistributionImplementation, ZeroInstallImplementation, OverlayBinding
 from zeroinstall.injector.iface_cache import iface_cache
 
 def do_env_binding(binding, path):
@@ -38,25 +38,33 @@ def execute(policy, prog_args, dry_run = False, main = None, wrapper = None):
 	"""
 	iface = iface_cache.get_interface(policy.root)
 		
+	pola_args = []
 	for needed_iface in policy.implementation:
 		impl = policy.implementation[needed_iface]
 		assert impl
-		_do_bindings(impl, impl.bindings)
+		pola_args.extend(_do_bindings(impl, impl.bindings))
 		for dep in impl.requires:
 			dep_iface = iface_cache.get_interface(dep.interface)
 			dep_impl = policy.get_implementation(dep_iface)
 			if isinstance(dep_impl, ZeroInstallImplementation):
-				_do_bindings(dep_impl, dep.bindings)
+				pola_args.extend(_do_bindings(dep_impl, dep.bindings))
 			else:
 				debug("Implementation %s is native; no bindings needed", dep_impl)
 
 	root_impl = policy.get_implementation(iface)
-	_execute(root_impl, prog_args, dry_run, main, wrapper)
+	_execute(root_impl, prog_args, dry_run, main, wrapper, pola_args)
 
 def _do_bindings(impl, bindings):
+	overlays = []
 	for b in bindings:
+		path = _get_implementation_path(impl.id)
 		if isinstance(b, EnvironmentBinding):
-			do_env_binding(b, _get_implementation_path(impl.id))
+			do_env_binding(b, path)
+		elif isinstance(b, OverlayBinding):
+			info("Overlay bindings are not yet supported")
+			src = b.src or '.'
+			overlays += ['-t', b.mount_point or '/', os.path.join(path, src)]
+	return overlays
 
 def _get_implementation_path(id):
 	if id.startswith('/'): return id
@@ -79,15 +87,16 @@ def execute_selections(selections, prog_args, dry_run = False, main = None, wrap
 	@precondition: All implementations are in the cache.
 	"""
 	sels = selections.selections
+	pola_args = []
 	for selection in sels.values():
-		_do_bindings(selection, selection.bindings)
+		pola_args.extend(_do_bindings(selection, selection.bindings))
 		for dep in selection.dependencies:
 			dep_impl = sels[dep.interface]
 			if not dep_impl.id.startswith('package:'):
-				_do_bindings(dep_impl, dep.bindings)
+				pola_args.extend(_do_bindings(dep_impl, dep.bindings))
 	
 	root_impl = sels[selections.interface]
-	_execute(root_impl, prog_args, dry_run, main, wrapper)
+	_execute(root_impl, prog_args, dry_run, main, wrapper, pola_args)
 
 def test_selections(selections, prog_args, dry_run, main, wrapper = None):
 	"""Run the program in a child process, collecting stdout and stderr.
@@ -128,7 +137,7 @@ def test_selections(selections, prog_args, dry_run, main, wrapper = None):
 	
 	return results
 
-def _execute(root_impl, prog_args, dry_run, main, wrapper):
+def _execute(root_impl, prog_args, dry_run, main, wrapper, pola_args):
 	assert root_impl is not None
 
 	if root_impl.id.startswith('package:'):
@@ -164,6 +173,10 @@ def _execute(root_impl, prog_args, dry_run, main, wrapper):
 		sys.stdout.flush()
 		sys.stderr.flush()
 		try:
-			os.execl(prog_path, prog_path, *prog_args)
+			if pola_args:
+				print ' '.join(['pola-run', '-fw', '/'] + pola_args + ['-e', prog_path] + prog_args)
+				os.execvp('pola-run', ['pola-run', '-fw', '/'] + pola_args + ['-e', prog_path] + prog_args)
+			else:
+				os.execl(prog_path, prog_path, *prog_args)
 		except OSError, ex:
 			raise SafeException("Failed to run '%s': %s" % (prog_path, str(ex)))
