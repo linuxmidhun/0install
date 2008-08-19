@@ -93,6 +93,7 @@ class AddBox:
 			try:
 				icon_path = iface_cache.get_icon_path(iface)
 				xdgutils.add_to_menu(iface, icon_path, category.get_active_text())
+				xdgutils.add_file_types(iface)
 			except SafeException, ex:
 				box = gtk.MessageDialog(self.window, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, str(ex))
 				box.run()

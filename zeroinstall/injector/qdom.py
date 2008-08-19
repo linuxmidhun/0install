@@ -9,6 +9,8 @@ This is our light-weight version.
 
 from xml.parsers import expat
 
+XMLNS_XML='http://www.w3.org/XML/1998/namespace'
+
 class Element(object):
 	"""An XML element.
 	@ivar uri: the element's namespace
@@ -37,6 +39,35 @@ class Element(object):
 			return start + '>' + self.content + ('</%s>' % (self.name))
 		else:
 			return start + '/>'
+	
+	def _write(self,indent,parentNode):
+		attrs = []
+		for n in self.attrs:
+			split = n.split(' ', 1)
+			attrStr = n
+			if len(split) == 2:
+				if split[0]  == XMLNS_XML:
+					attrStr = 'xml:' + split[1]
+				# FIXME: other namespaces
+			attrs.append(attrStr + '="' + self.attrs[n] + '"')
+		indentStr = ''.rjust(indent, '\t')
+		if (parentNode == None) or (self.uri != parentNode.uri):
+			xmlnsStr = ' xmlns="%s"' % self.uri
+		else:
+			xmlnsStr = ''
+		start = indentStr + '<%s %s%s' % (self.name, ' '.join(attrs), xmlnsStr)
+		if self.childNodes:
+			childrenStr = ''
+			for child in self.childNodes:
+				childrenStr = childrenStr + child._write (indent+1,self) + '\n'
+			return start + '>\n' + childrenStr + indentStr + ('</%s>' % (self.name))
+		elif self.content:
+			return start + '>' + self.content + ('</%s>' % (self.name))
+		else:
+			return start + '/>'
+			
+	def write(self):
+		return '<?xml version="1.0" encoding="UTF-8"?>\n' + self._write (0, None)
 	
 	def getAttribute(self, name):
 		return self.attrs.get(name, None)

@@ -24,6 +24,8 @@ Categories=Application;%s
 _icon_template = """Icon=%s
 """
 
+XMLNS_SHARED_MIME_INFO = "http://www.freedesktop.org/standards/shared-mime-info"
+
 def add_to_menu(iface, icon_path, category):
 	"""Write a .desktop file for this application.
 	@param iface: the program being added
@@ -43,6 +45,26 @@ def add_to_menu(iface, icon_path, category):
 
 	if status:
 		raise SafeException('Failed to run xdg-desktop-menu (error code %d)' % status)
+
+def add_file_types(iface):
+	feed = iface._main_feed
+	for meta in feed.metadata:
+		if meta.uri != XMLNS_SHARED_MIME_INFO:
+			continue
+		if meta.name != "mime-info":
+			raise SafeException ('Expected <mime-info> element in shared-mime-info namespace')
+		tmpdir = tempfile.mkdtemp(prefix = 'zero2desktop-')
+		try:
+			desktop_name = os.path.join(tmpdir, 'zeroinstall-%s-mime.desktop' % iface.get_name().lower().replace(' ', ''))
+			desktop = file(desktop_name, 'w')
+			desktop.write(meta.write())
+			desktop.close()
+			status = os.spawnlp(os.P_WAIT, 'xdg-mime', 'xdg-mime', 'install', desktop_name)
+		finally:
+			shutil.rmtree(tmpdir)
+
+		if status:
+			raise SafeException('Failed to run xdg-mime (error code %d)' % status)
 
 def discover_existing_apps():
 	"""Search through the configured XDG datadirs looking for .desktop files created by L{add_to_menu}.
