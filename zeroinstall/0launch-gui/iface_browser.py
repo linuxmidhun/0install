@@ -3,7 +3,7 @@
 
 import gtk, gobject, pango
 
-from zeroinstall.support import basedir, tasks, pretty_size
+from zeroinstall.support import tasks, pretty_size
 from zeroinstall.injector.iface_cache import iface_cache
 from zeroinstall.injector import model
 import properties
@@ -279,6 +279,7 @@ class InterfaceBrowser:
 				return icon
 			else:
 				# Try to download the icon
+				self.cached_icon[iface.uri] = None	# Only try once
 				fetcher = self.policy.download_icon(iface)
 				if fetcher:
 					@tasks.async

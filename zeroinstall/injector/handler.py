@@ -10,15 +10,13 @@ To do this, you supply a L{Handler} to the L{policy}.
 # Copyright (C) 2006, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
-import os, sys
-from logging import debug, info, warn
+from logging import debug, warn
 
-from zeroinstall import NeedDownload
+from zeroinstall import NeedDownload, SafeException
 from zeroinstall.support import tasks
-from zeroinstall.injector import model, download
-from zeroinstall.injector.iface_cache import iface_cache
+from zeroinstall.injector import download
 
-class NoTrustedKeys(model.SafeException):
+class NoTrustedKeys(SafeException):
 	"""Thrown by L{Handler.confirm_trust_keys} on failure."""
 	pass
 
@@ -133,7 +131,7 @@ class Handler(object):
 		assert sigs
 		valid_sigs = [s for s in sigs if isinstance(s, gpg.ValidSig)]
 		if not valid_sigs:
-			raise model.SafeException('No valid signatures found. Signatures:' +
+			raise SafeException('No valid signatures found. Signatures:' +
 					''.join(['\n- ' + str(s) for s in sigs]))
 
 		domain = trust.domain_from_url(interface.uri)

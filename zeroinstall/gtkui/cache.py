@@ -2,7 +2,7 @@
 # Copyright (C) 2008, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
-import os, shutil
+import os
 import gtk
 
 from zeroinstall.injector import namespaces, model
@@ -266,7 +266,7 @@ class CacheExplorer:
 		self.tree_view.connect('leave-notify-event', lambda tv, ev: tips.hide())
 
 		# Responses
-		window.set_default_response(gtk.RESPONSE_OK)
+		window.set_default_response(gtk.RESPONSE_CLOSE)
 
 		selection = self.tree_view.get_selection()
 		def selection_changed(selection):
@@ -283,7 +283,7 @@ class CacheExplorer:
 		selection_changed(selection)
 
 		def response(dialog, resp):
-			if resp == gtk.RESPONSE_OK:
+			if resp == gtk.RESPONSE_CLOSE:
 				window.destroy()
 			elif resp == gtk.RESPONSE_HELP:
 				cache_help.display()

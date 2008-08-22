@@ -8,16 +8,16 @@ settings.
 # See the README file for details, or visit http://0install.net.
 
 import time
-import sys, os
+import os
 from logging import info, debug, warn
-import arch
-
-from model import *
-from namespaces import *
 import ConfigParser
+
+from zeroinstall import SafeException
+from zeroinstall.injector import arch
+from zeroinstall.injector.model import Interface, Implementation, network_levels, network_offline, DistributionImplementation, network_full
+from zeroinstall.injector.namespaces import config_site, config_prog, injector_gui_uri
 from zeroinstall.support import tasks, basedir
-from zeroinstall.injector.iface_cache import iface_cache, PendingFeed
-from zeroinstall.injector.trust import trust_db
+from zeroinstall.injector.iface_cache import iface_cache
 
 # If we started a check within this period, don't start another one:
 FAILED_CHECK_DELAY = 60 * 60	# 1 Hour
@@ -271,7 +271,7 @@ class Policy(object):
 	
 	def get_uncached_implementations(self):
 		"""List all chosen implementations which aren't yet available locally.
-		@rtype: [(str, model.Implementation)]"""
+		@rtype: [(L{model.Interface}, L{model.Implementation})]"""
 		uncached = []
 		for iface in self.solver.selections:
 			impl = self.solver.selections[iface]
