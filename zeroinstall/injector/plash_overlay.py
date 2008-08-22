@@ -10,6 +10,7 @@ def execute_with_overlay(prog_path, prog_args, overlays):
 	proc = plash.process.ProcessSpecWithNamespace()
 	proc.setcmd(prog_path, *prog_args)
 	proc.env = os.environ.copy()
+	pola_run_args.set_fake_uids(proc)
 	setup = pola_run_args.ProcessSetup(proc)
 	root = plash.env.get_root_dir()
 	proc.cwd_path = os.getcwd()
