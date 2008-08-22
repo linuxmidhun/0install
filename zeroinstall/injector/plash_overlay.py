@@ -5,6 +5,7 @@ from logging import info
 
 def execute_with_overlay(prog_path, prog_args, overlays):
 	prog_path = str(prog_path)	# unicode -> str
+	prog_args = map(str, prog_args)
 
 	proc = plash.process.ProcessSpecWithNamespace()
 	proc.setcmd(prog_path, *prog_args)
