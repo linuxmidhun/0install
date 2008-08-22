@@ -38,21 +38,21 @@ def execute(policy, prog_args, dry_run = False, main = None, wrapper = None):
 	"""
 	iface = iface_cache.get_interface(policy.root)
 		
-	pola_args = []
+	overlays = []
 	for needed_iface in policy.implementation:
 		impl = policy.implementation[needed_iface]
 		assert impl
-		pola_args.extend(_do_bindings(impl, impl.bindings))
+		overlays.extend(_do_bindings(impl, impl.bindings))
 		for dep in impl.requires:
 			dep_iface = iface_cache.get_interface(dep.interface)
 			dep_impl = policy.get_implementation(dep_iface)
 			if isinstance(dep_impl, ZeroInstallImplementation):
-				pola_args.extend(_do_bindings(dep_impl, dep.bindings))
+				overlays.extend(_do_bindings(dep_impl, dep.bindings))
 			else:
 				debug("Implementation %s is native; no bindings needed", dep_impl)
 
 	root_impl = policy.get_implementation(iface)
-	_execute(root_impl, prog_args, dry_run, main, wrapper, pola_args)
+	_execute(root_impl, prog_args, dry_run, main, wrapper, overlays)
 
 def _do_bindings(impl, bindings):
 	overlays = []
@@ -61,9 +61,8 @@ def _do_bindings(impl, bindings):
 		if isinstance(b, EnvironmentBinding):
 			do_env_binding(b, path)
 		elif isinstance(b, OverlayBinding):
-			info("Overlay bindings are not yet supported")
 			src = b.src or '.'
-			overlays += ['-t', b.mount_point or '/', os.path.join(path, src)]
+			overlays.append((str(b.mount_point or '/'), str(os.path.join(path, src))))
 	return overlays
 
 def _get_implementation_path(id):
@@ -87,16 +86,16 @@ def execute_selections(selections, prog_args, dry_run = False, main = None, wrap
 	@precondition: All implementations are in the cache.
 	"""
 	sels = selections.selections
-	pola_args = []
+	overlays = []
 	for selection in sels.values():
-		pola_args.extend(_do_bindings(selection, selection.bindings))
+		overlays.extend(_do_bindings(selection, selection.bindings))
 		for dep in selection.dependencies:
 			dep_impl = sels[dep.interface]
 			if not dep_impl.id.startswith('package:'):
-				pola_args.extend(_do_bindings(dep_impl, dep.bindings))
+				overlays.extend(_do_bindings(dep_impl, dep.bindings))
 	
 	root_impl = sels[selections.interface]
-	_execute(root_impl, prog_args, dry_run, main, wrapper, pola_args)
+	_execute(root_impl, prog_args, dry_run, main, wrapper, overlays)
 
 def test_selections(selections, prog_args, dry_run, main, wrapper = None):
 	"""Run the program in a child process, collecting stdout and stderr.
@@ -137,7 +136,7 @@ def test_selections(selections, prog_args, dry_run, main, wrapper = None):
 	
 	return results
 
-def _execute(root_impl, prog_args, dry_run, main, wrapper, pola_args):
+def _execute(root_impl, prog_args, dry_run, main, wrapper, overlays):
 	assert root_impl is not None
 
 	if root_impl.id.startswith('package:'):
@@ -173,9 +172,9 @@ def _execute(root_impl, prog_args, dry_run, main, wrapper, pola_args):
 		sys.stdout.flush()
 		sys.stderr.flush()
 		try:
-			if pola_args:
-				print ' '.join(['pola-run', '-fw', '/'] + pola_args + ['-e', prog_path] + prog_args)
-				os.execvp('pola-run', ['pola-run', '-fw', '/'] + pola_args + ['-e', prog_path] + prog_args)
+			if overlays:
+				import plash_overlay
+				plash_overlay.execute_with_overlay(prog_path, prog_args, overlays)
 			else:
 				os.execl(prog_path, prog_path, *prog_args)
 		except OSError, ex:
