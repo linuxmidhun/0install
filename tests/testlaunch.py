@@ -186,6 +186,19 @@ class TestLaunch(BaseTest):
 		finally:
 			os.dup2(copy, 1)
 
+	def testOverlay(self):
+		tmp = tempfile.NamedTemporaryFile(prefix='test-overlay-')
+		try:
+			fd = tmp.fileno()
+			out, err = self.run_0launch([os.path.join(os.path.dirname(__file__), 'test-overlay', 'fixed.xml'), tmp.name])
+			self.assertEquals("", err)
+			self.assertEquals("", out)
+
+			tmp.seek(0)
+			self.assertEquals("Hi, I'm /usr/games/plash-test/fixed.txt!\n", tmp.read())
+		finally:
+			tmp.close()
+
 suite = unittest.makeSuite(TestLaunch)
 if __name__ == '__main__':
 	sys.argv.append('-v')

@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<?xml-stylesheet type='text/xsl' href='interface.xsl'?>
+<interface xmlns="http://zero-install.sourceforge.net/2004/injector/interface">
+  <name>fixed</name>
+  <summary>test 0launch's overlay support</summary>
+  <description>
+This program accesses a file using the hard-coded path &quot;/usr/games/plash-test/fixed.txt&quot;. Zero Install should use plash's union filesystem support to
+make this work without needing root access or changing anything under /usr.</description>
+  <needs-terminal/>
+  <group>
+    <implementation id="." main="go.sh" released="2008-08-22" version="1.0"/>
+    <overlay mount-point="/usr/games" src="."/>
+  </group>
+</interface>
