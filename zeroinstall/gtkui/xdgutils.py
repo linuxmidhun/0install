@@ -68,3 +68,13 @@ def discover_existing_apps():
 				except Exception, ex:
 					warn("Failed to load .desktop file %s: %s", full, ex)
 	return already_installed
+
+def get_known_category(feed_category):
+	if feed_category:
+		categories = ['AudioVideo','Audio','Video','Development','Education','Game',
+			'Graphics','Network','Office','Settings','System','Utility']
+		feed_low = feed_category.lower()
+		for cat in categories:
+			if cat.lower() == feed_low:
+				return cat
+	return None

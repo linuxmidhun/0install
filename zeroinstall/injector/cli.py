@@ -280,6 +280,43 @@ def _get_selections(policy):
 	doc.writexml(sys.stdout)
 	sys.stdout.write('\n')
 
+def _add_to_menu(options, sels):
+	if len(sels) < 1:
+		raise UsageError()
+
+	from zeroinstall.injector.namespaces import XMLNS_IFACE
+	from zeroinstall.gtkui import xdgutils
+
+	for uri in sels:
+		iface_uri = model.canonical_iface_uri(uri)
+		policy = autopolicy.AutoPolicy(iface_uri)
+		if options.offline:
+			policy.network_use = model.network_offline
+		iface = iface_cache.get_interface(iface_uri)
+
+		refreshed = policy.solve_with_downloads(options.refresh)
+		if refreshed:
+			policy.handler.wait_for_blocker(refreshed)
+
+		impl = policy.get_implementation(iface)
+		if impl.main is None:
+			# Only add menu items for implementations with a main
+			logging.info("Skipping %s, it has no main" % iface_uri)
+			continue
+
+		iconfetch = policy.download_icon(iface)
+		if iconfetch:
+			policy.handler.wait_for_blocker(iconfetch)
+
+		icon_path = iface_cache.get_icon_path(iface)
+		feed_category = None
+		for meta in iface.get_metadata(XMLNS_IFACE, 'category'):
+			feed_category = meta.content
+			break
+		feed_category = xdgutils.get_known_category(feed_category)
+
+		xdgutils.add_to_menu(iface, icon_path, feed_category)
+
 class UsageError(Exception): pass
 
 def main(command_args):
@@ -301,6 +338,7 @@ def main(command_args):
 				    "       %prog --list [search-term]\n"
 				    "       %prog --import [signed-interface-files]\n"
 				    "       %prog --feed [interface]")
+	parser.add_option("", "--addmenu", help="add menu items for given interfaces", action='store_true')
 	parser.add_option("", "--before", help="choose a version before this", metavar='VERSION')
 	parser.add_option("-c", "--console", help="never use GUI", action='store_false', dest='gui')
 	parser.add_option("", "--cpu", help="target CPU type", metavar='CPU')
@@ -355,6 +393,8 @@ def main(command_args):
 			_import_feed(args)
 		elif options.feed:
 			_manage_feeds(options, args)
+		elif options.addmenu:
+			_add_to_menu(options, args)
 		else:
 			_normal_mode(options, args)
 	except UsageError:
