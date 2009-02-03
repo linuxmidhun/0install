@@ -20,7 +20,8 @@ def find_in_path(prog):
 	@since: 0.27
 	"""
 	if os.path.isabs(prog): return prog
-	for d in os.environ.get('PATH', '/bin:/usr/bin').split(':'):
+	prog += '.exe'
+	for d in os.environ.get('PATH', 'c:\\').split(';'):
 		path = os.path.join(d, prog)
 		if os.path.isfile(path):
 			return path
