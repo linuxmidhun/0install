@@ -95,7 +95,8 @@ class Download(object):
 		# Wait for child to exit, collecting error output as we go
 
 		while True:
-			yield tasks.InputBlocker(self.child.stderr, "read data from " + self.url)
+			#yield tasks.InputBlocker(self.child.stderr, "read data from " + self.url)
+			yield None
 
 			data = os.read(self.child.stderr.fileno(), 100)
 			if not data:
