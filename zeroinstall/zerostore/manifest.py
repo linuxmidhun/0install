@@ -426,7 +426,7 @@ class HashLibAlgorithm(Algorithm):
 			m = info.st_mode
 			if not stat.S_ISDIR(m): raise Exception('Not a directory: "%s"' % full)
 			if sub != '/':
-				yield "D %s" % sub
+				yield "D %s" % sub.replace("\\", "/")
 			items = os.listdir(full)
 			items.sort()
 			dirs = []

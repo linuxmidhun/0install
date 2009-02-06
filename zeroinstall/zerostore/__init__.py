@@ -226,7 +226,7 @@ class Stores(object):
 		if impl_dirs:
 			dirs = file(impl_dirs)
 		else:
-			dirs = ['/var/cache/0install.net/implementations']
+			dirs = ['c:\\implementations']
 		for directory in dirs:
 			directory = directory.strip()
 			if directory and not directory.startswith('#'):
