@@ -69,6 +69,8 @@ class KeyInfoFetcher:
 
 		self.blocker = fetch_key_info()
 
+DEFAULT_KEY_LOOKUP_SERVER = 'https://keylookup.appspot.com'
+
 class Fetcher(object):
 	"""Downloads and stores various things.
 	@ivar handler: handler to use for user-interaction
@@ -85,7 +87,7 @@ class Fetcher(object):
 	def __init__(self, handler):
 		self.handler = handler
 		self.feed_mirror = "http://roscidus.com/0mirror"
-		self.key_info_server = 'https://keylookup.appspot.com'
+		self.key_info_server = DEFAULT_KEY_LOOKUP_SERVER
 		self.key_info = {}
 
 	@tasks.async
