@@ -45,8 +45,11 @@ class KeyInfoFetcher:
 	def __init__(self, server, fingerprint):
 		self.fingerprint = fingerprint
 		self.info = []
+		self.blocker = None
+
+		if server is None: return
+
 		self.status = 'Fetching key information from %s...' % server
-		self.done = False
 
 		dl = download.Download(server + '/key/' + fingerprint)
 		dl.start()
