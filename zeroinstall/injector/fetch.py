@@ -85,7 +85,7 @@ class Fetcher(object):
 	def __init__(self, handler):
 		self.handler = handler
 		self.feed_mirror = "http://roscidus.com/0mirror"
-		self.key_info_server = 'http://localhost:8080'
+		self.key_info_server = 'https://keylookup.appspot.com'
 		self.key_info = {}
 
 	@tasks.async
