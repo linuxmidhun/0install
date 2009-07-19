@@ -168,10 +168,14 @@ class Handler(object):
 		while self._current_confirm is not None:
 			yield self._current_confirm
 
-		self._current_confirm = done = self.confirm_import_feed(pending, kfs)
-		yield done
-		self._current_confirm = None
-		tasks.check(done)
+		self._current_confirm = lock = tasks.Blocker('confirm key lock')
+		try:
+			done = self.confirm_import_feed(pending, kfs)
+			yield done
+			tasks.check(done)
+		finally:
+			self._current_confirm = None
+			lock.trigger()
 
 	@tasks.async
 	def confirm_import_feed(self, pending, valid_sigs):
