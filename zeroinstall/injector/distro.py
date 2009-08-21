@@ -194,6 +194,42 @@ class RPMDistribution(CachedDistribution):
 			if machine != '*':
 				impl.machine = machine
 
+class SlackDistribution(CachedDistribution):
+	"""A Slack-based distribution."""
+
+	cache_leaf = 'slack-status.cache'
+
+	def __init__(self, packages_dir):
+		self._packages_dir = packages_dir
+		CachedDistribution.__init__(self, packages_dir)
+
+	def generate_cache(self):
+		cache = []
+
+		for entry in os.listdir(self._packages_dir):
+			package, version, arch, build = entry.rsplit('-', 3)
+			if arch == 'noarch':
+				zi_arch = '*'
+			else:
+				zi_arch = arch
+			clean_version = try_cleanup_distro_version("%s-%s" % (version, build))
+			if clean_version:
+				cache.append('%s\t%s\t%s' % (package, clean_version, zi_arch))
+			else:
+				warn(_("Can't parse distribution version '%(version)s' for package '%(package)s'"), {'version': version, 'package': package})
+
+		self._write_cache(cache)
+
+	def get_package_info(self, package, factory):
+		try:
+			for version, machine in self.versions[package]:
+				impl = factory('package:slack:%s:%s' % (package, version)) 
+				impl.version = model.parse_version(version)
+				if machine != '*':
+					impl.machine = machine
+		except KeyError:
+			return
+
 _host_distribution = None
 def get_host_distribution():
 	"""Get a Distribution suitable for the host operating system.
@@ -203,11 +239,14 @@ def get_host_distribution():
 	if not _host_distribution:
 		_dpkg_db_status = '/var/lib/dpkg/status'
 		_rpm_db = '/var/lib/rpm/Packages'
+		_slack_db = '/var/log/packages'
 
 		if os.access(_dpkg_db_status, os.R_OK):
 			_host_distribution = DebianDistribution(_dpkg_db_status)
 		elif os.path.isfile(_rpm_db):
 			_host_distribution = RPMDistribution(_rpm_db)
+		elif os.path.isdir(_slack_db):
+			_host_distribution = SlackDistribution(_slack_db)
 		else:
 			_host_distribution = Distribution()
 	

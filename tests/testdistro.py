@@ -55,6 +55,18 @@ class TestDistro(BaseTest):
 		self.assertEquals('2.15.23-21', yast.get_version())
 		self.assertEquals('*-i586', yast.arch)
 
+	def testSlack(self):
+		slackdir = os.path.join(os.path.dirname(__file__), 'slack')
+		slack = distro.SlackDistribution(os.path.join(slackdir, 'packages'))
+
+		self.assertEquals(2, len(slack.versions))
+
+		slack.get_package_info('infozip', self.factory)
+		self.assertEquals(1, len(self.feed.implementations))
+		zip = self.feed.implementations['package:slack:infozip:5.52-2']
+		self.assertEquals('5.52-2', zip.get_version())
+		self.assertEquals('*-i486', zip.arch)
+
 	def testCleanVersion(self):
 		self.assertEquals('1', distro.try_cleanup_distro_version('1:0.3.1-1'))
 		self.assertEquals('0.3.1-1', distro.try_cleanup_distro_version('0.3.1-1ubuntu0'))
