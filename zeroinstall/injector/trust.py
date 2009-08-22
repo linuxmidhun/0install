@@ -108,7 +108,16 @@ class TrustDB(object):
 		doc.writexml(tmp, indent = "", addindent = "  ", newl = "\n")
 		tmp.close()
 
-		os.rename(tmpname, os.path.join(d, 'trustdb.xml'))
+		try:
+			os.rename(tmpname, os.path.join(d, 'trustdb.xml'))
+		except OSError:
+			#Fix for rename operation not working in windows if file dest exists
+			try:
+				os.unlink(os.path.join(d, 'trustdb.xml.bak'))
+			except OSError:
+				pass
+			os.rename(os.path.join(d, 'trustdb.xml'), os.path.join(d, 'trustdb.xml.bak'))
+			os.rename(tmpname, os.path.join(d, 'trustdb.xml'))
 	
 	def notify(self):
 		"""Call all watcher callbacks.
