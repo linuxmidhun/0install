@@ -449,9 +449,11 @@ class HashLibAlgorithm(Algorithm):
 
 				if stat.S_ISREG(m):
 					if leaf == '.manifest': continue
+					if leaf == '.xbit': continue
 
-					d = new_digest(file(path).read()).hexdigest()
-					if m & 0111:
+					fix_sub = sub.replace('\\', '/')
+					d = new_digest(file(path, 'rb').read()).hexdigest()
+					if (fix_sub in self.dir_dict) and (leaf in self.dir_dict[fix_sub]):
 						yield "X %s %s %s %s" % (d, int(info.st_mtime), info.st_size, leaf)
 					else:
 						yield "F %s %s %s %s" % (d, int(info.st_mtime), info.st_size, leaf)
@@ -470,6 +472,21 @@ class HashLibAlgorithm(Algorithm):
 				for y in recurse(os.path.join(sub, x)): yield y
 			return
 
+		def parse_xbit():
+			self.dir_dict = {}
+			try:
+				xbit_file = file(os.path.join(root, '.xbit'), 'rb')
+			except IOError:
+				return
+			for line in xbit_file:
+				line = line[:-1]
+				(head, tail) = os.path.split(line)
+				if head in self.dir_dict:
+					self.dir_dict[head] = self.dir_dict[head] + [tail]
+				else:
+					self.dir_dict[head] = [tail]
+			xbit_file.close()
+		parse_xbit()
 		for x in recurse('/'): yield x
 
 	def getID(self, digest):
