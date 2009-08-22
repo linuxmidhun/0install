@@ -354,10 +354,15 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 		except:
 			debug(_("Can't get uid/gid"))
 
-		def chmod_extract(tarinfo):
+		def chmod_extract(tarinfo, xbitfile):
 			# If any X bit is set, they all must be
 			if tarinfo.mode & 0111:
 				tarinfo.mode |= 0111
+				if tarinfo.isfile():
+					if tarinfo.name.startswith(extract):
+						xbitfile.write(tarinfo.name[len(extract):] + '\n')
+					else:
+						Exception(_('All files need to be in extract dir'))
 
 			# Everyone gets read and write (subject to the umask)
 			# No special bits are allowed.
@@ -373,6 +378,8 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 		extracted_anything = False
 		ext_dirs = []
 
+		(fd, xbit_name) = mkstemp()
+		xbit = os.fdopen(fd, 'wb')
 		for tarinfo in tar:
 			if extract is None or \
 			   tarinfo.name.startswith(extract + '/') or \
@@ -380,8 +387,9 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 				if tarinfo.isdir():
 					ext_dirs.append(tarinfo)
 
-				chmod_extract(tarinfo)
+				chmod_extract(tarinfo, xbit)
 				extracted_anything = True
+		xbit.close()
 
 		# Due to a bug in tarfile (python versions < 2.5), we have to manually
 		# set the mtime of each directory that we extract after extracting everything.
@@ -391,6 +399,8 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 			#os.utime(dirname, (tarinfo.mtime, tarinfo.mtime))
 
 		tar.close()
+
+		shutil.move(xbit_name, os.path.join(destdir, extract, '.xbit'))
 
 		if extract and not extracted_anything:
 			raise SafeException(_('Unable to find specified file = %s in archive') % extract)
