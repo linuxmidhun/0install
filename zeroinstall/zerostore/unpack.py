@@ -276,7 +276,7 @@ def extract_zip(stream, destdir, extract, start_offset = 0):
 	stream.seek(start_offset)
 	# unzip can't read from stdin, so make a copy...
 	zip_copy_name = os.path.join(destdir, 'archive.zip')
-	zip_copy = file(zip_copy_name, 'w')
+	zip_copy = file(zip_copy_name, 'wb')
 	shutil.copyfileobj(stream, zip_copy)
 	zip_copy.close()
 
@@ -286,14 +286,35 @@ def extract_zip(stream, destdir, extract, start_offset = 0):
 		args.append(extract + '/*')
 
 	_extract(stream, destdir, args)
+
+	xbit_files = []
+	p = subprocess.Popen('unzip -Z -s ' + zip_copy_name, stdout=subprocess.PIPE, universal_newlines=True)
+	o = p.communicate()[0]
+	for line in o.split('\n'):
+		#-rwxrwxrwx  2.3 unx    24576 bx defX  5-Jun-09 08:54 filename.ext
+		#line[:10] permissions
+		#line[11:15] version
+		#line[16:19] fs
+		#line[53:]
+		if line[16:19] == 'unx':
+			if line[3] == 'x':
+				path = line[53:]
+				if extract:
+					if path.startswith(extract + '/'):
+						xbit_files += [path[len(extract):]]
+				else:
+					xbit_files += ['/' + path]
+	if xbit_files:
+		if extract:
+			filename = os.path.join(destdir, extract, '.xbit')
+		else:
+			os.path.join(destdir, '.xbit')
+		xbit = file(filename, 'wb')
+		for item in xbit_files:
+			xbit.write(item + '\n')
+		xbit.close()
+
 	os.unlink(zip_copy_name)
-	
-	if extract:
-		# unzip uses extract just as a filter, so we still need to move things
-		extracted_dir = os.path.join(destdir, extract)
-		for x in os.listdir(extracted_dir):
-			os.rename(os.path.join(extracted_dir, x), os.path.join(destdir, x))
-		os.rmdir(extracted_dir)
 
 def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 	if extract:
