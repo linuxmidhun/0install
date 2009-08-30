@@ -1,7 +1,8 @@
 """Add tooltips to a TreeView."""
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
+from zeroinstall import _
 import time, gobject, gtk
 
 class TreeTips:

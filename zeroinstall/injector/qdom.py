@@ -4,9 +4,10 @@ Python's xml.dom is very slow. The xml.sax module is also slow (as it imports ur
 This is our light-weight version.
 """
 
-# Copyright (C) 2006, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
+from zeroinstall import _
 from xml.parsers import expat
 
 class Element(object):

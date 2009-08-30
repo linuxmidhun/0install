@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
 import gtk, gobject, os
@@ -7,17 +7,38 @@ from zeroinstall import support
 from zeroinstall.gtkui.treetips import TreeTips
 import utils
 
-def popup_menu(bev, values, fn):
+def _build_stability_menu(policy, impl):
 	menu = gtk.Menu()
-	for value in values:
-		if value is None:
-			item = gtk.SeparatorMenuItem()
+
+	upstream = impl.upstream_stability or model.testing
+	choices = model.stability_levels.values()
+	choices.sort()
+	choices.reverse()
+
+	def set(new):
+		if isinstance(new, model.Stability):
+			impl.user_stability = new
 		else:
-			item = gtk.MenuItem(str(value).capitalize())
-			item.connect('activate', lambda item, v=value: fn(v))
+			impl.user_stability = None
+		writer.save_feed(impl.feed)
+		policy.recalculate()
+
+	item = gtk.MenuItem(_('Unset (%s)') % upstream)
+	item.connect('activate', lambda item: set(None))
+	item.show()
+	menu.append(item)
+
+	item = gtk.SeparatorMenuItem()
+	item.show()
+	menu.append(item)
+
+	for value in choices:
+		item = gtk.MenuItem(_(str(value)).capitalize())
+		item.connect('activate', lambda item, v = value: set(v))
 		item.show()
 		menu.append(item)
-	menu.popup(None, None, None, bev.button, bev.time)
+
+	return menu
 
 rox_filer = 'http://rox.sourceforge.net/2005/interfaces/ROX-Filer'
 
@@ -107,26 +128,26 @@ class ImplementationList:
 				return False
 			path, col, x, y = pos
 			impl = self.model[path][ITEM]
-			if col == stability:
-				upstream = impl.upstream_stability or model.testing
-				choices = model.stability_levels.values()
-				choices.sort()
-				choices.reverse()
-				def set(new):
-					if isinstance(new, model.Stability):
-						impl.user_stability = new
-					else:
-						impl.user_stability = None
-					writer.save_feed(impl.feed)
-					self.policy.recalculate()
-				popup_menu(bev, ['Unset (%s)' % upstream, None] + choices,
-					set)
-			elif bev.button == 3 and self.policy.get_cached(impl):
-				def open(item):
+
+			menu = gtk.Menu()
+
+			stability_menu = gtk.MenuItem(_('Rating'))
+			stability_menu.set_submenu(_build_stability_menu(self.policy, impl))
+			stability_menu.show()
+			menu.append(stability_menu)
+
+			if self.policy.get_cached(impl):
+				def open():
 					os.spawnlp(os.P_WAIT, '0launch',
 						'0launch', rox_filer, '-d',
 						self.policy.get_implementation_path(impl))
-				popup_menu(bev, ['Open cached copy'], open)
+				item = gtk.MenuItem(_('Open cached copy'))
+				item.connect('activate', lambda item: open())
+				item.show()
+				menu.append(item)
+
+			menu.popup(None, None, None, bev.button, bev.time)
+
 		self.tree_view.connect('button-press-event', button_press)
 	
 	def get_selection(self):
@@ -141,13 +162,25 @@ class ImplementationList:
 			self.model[new][RELEASED] = item.released or "-"
 			self.model[new][FETCH] = utils.get_fetch_info(self.policy, item)
 			if item.user_stability:
-				self.model[new][STABILITY] = str(item.user_stability).upper()
+				if item.user_stability == model.insecure:
+					self.model[new][STABILITY] = _('INSECURE')
+				elif item.user_stability == model.buggy:
+					self.model[new][STABILITY] = _('BUGGY')
+				elif item.user_stability == model.developer:
+					self.model[new][STABILITY] = _('DEVELOPER')
+				elif item.user_stability == model.testing:
+					self.model[new][STABILITY] = _('TESTING')
+				elif item.user_stability == model.stable:
+					self.model[new][STABILITY] = _('STABLE')
+				elif item.user_stability == model.packaged:
+					self.model[new][STABILITY] = _('PACKAGED')
+				elif item.user_stability == model.preferred:
+					self.model[new][STABILITY] = _('PREFERRED')
 			else:
-				self.model[new][STABILITY] = item.upstream_stability or \
-							     model.testing
-			self.model[new][ARCH] = item.arch or 'any'
+				self.model[new][STABILITY] = _(str(item.upstream_stability) or str(model.testing))
+			self.model[new][ARCH] = item.arch or _('any')
 			self.model[new][UNUSABLE] = bool(unusable)
-			self.model[new][NOTES] = unusable
+			self.model[new][NOTES] = _(unusable)
 	
 	def clear(self):
 		self.model.clear()

@@ -3,9 +3,10 @@ Integration with native distribution package managers.
 @since: 0.28
 """
 
-# Copyright (C) 2007, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
+from zeroinstall import _
 import os, re
 from logging import warn, info
 from zeroinstall.injector import namespaces, model
@@ -59,12 +60,12 @@ class CachedDistribution(Distribution):
 		try:
 			self._load_cache()
 		except Exception, ex:
-			info("Failed to load distribution database cache (%s). Regenerating...", ex)
+			info(_("Failed to load distribution database cache (%s). Regenerating..."), ex)
 			try:
 				self.generate_cache()
 				self._load_cache()
 			except Exception, ex:
-				warn("Failed to regenerate distribution database cache: %s", ex)
+				warn(_("Failed to regenerate distribution database cache: %s"), ex)
 
 	def _load_cache(self):
 		"""Load {cache_leaf} cache file into self.versions if it is available and up-to-date.
@@ -77,21 +78,25 @@ class CachedDistribution(Distribution):
 				break
 			name, value = line.split(': ')
 			if name == 'mtime' and int(value) != int(self._status_details.st_mtime):
-				raise Exception("Modification time of package database file has changed")
+				raise Exception(_("Modification time of package database file has changed"))
 			if name == 'size' and int(value) != self._status_details.st_size:
-				raise Exception("Size of package database file has changed")
+				raise Exception(_("Size of package database file has changed"))
 			if name == 'version':
 				cache_version = int(value)
 		else:
-			raise Exception('Invalid cache format (bad header)')
+			raise Exception(_('Invalid cache format (bad header)'))
 
 		if cache_version is None:
-			raise Exception('Old cache format')
+			raise Exception(_('Old cache format'))
 			
 		versions = self.versions
 		for line in stream:
 			package, version, zi_arch = line[:-1].split('\t')
-			versions[package] = (version, intern(zi_arch))
+			versionarch = (version, intern(zi_arch))
+			if package not in versions:
+				versions[package] = [versionarch]
+			else:
+				versions[package].append(versionarch)
 
 	def _write_cache(self, cache):
 		#cache.sort() 	# Might be useful later; currently we don't care
@@ -136,13 +141,13 @@ class DebianDistribution(CachedDistribution):
 			if clean_version:
 				cache.append('%s\t%s\t%s' % (package, clean_version, zi_arch))
 			else:
-				warn("Can't parse distribution version '%s' for package '%s'", version, package)
+				warn(_("Can't parse distribution version '%(version)s' for package '%(package)s'"), {'version': version, 'package': package})
 
 		self._write_cache(cache)
 
 	def get_package_info(self, package, factory):
 		try:
-			version, machine = self.versions[package]
+			version, machine = self.versions[package][0]
 		except KeyError:
 			return
 
@@ -173,20 +178,21 @@ class RPMDistribution(CachedDistribution):
 			if clean_version:
 				cache.append('%s\t%s\t%s' % (package, clean_version, zi_arch))
 			else:
-				warn("Can't parse distribution version '%s' for package '%s'", version, package)
+				warn(_("Can't parse distribution version '%(version)s' for package '%(package)s'"), {'version': version, 'package': package})
 
 		self._write_cache(cache)
 
 	def get_package_info(self, package, factory):
 		try:
-			version, machine = self.versions[package]
+			versions = self.versions[package]
 		except KeyError:
 			return
 
-		impl = factory('package:rpm:%s:%s' % (package, version)) 
-		impl.version = model.parse_version(version)
-		if machine != '*':
-			impl.machine = machine
+		for version, machine in versions:
+			impl = factory('package:rpm:%s:%s:%s' % (package, version, machine))
+			impl.version = model.parse_version(version)
+			if machine != '*':
+				impl.machine = machine
 
 _host_distribution = None
 def get_host_distribution():

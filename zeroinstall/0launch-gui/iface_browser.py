@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
 import gtk, gobject, pango
@@ -16,7 +16,8 @@ def _stability(impl):
 	assert impl
 	if impl.user_stability is None:
 		return impl.upstream_stability
-	return _("%s (was %s)") % (impl.user_stability, impl.upstream_stability)
+	return _("%(implementation_user_stability)s (was %(implementation_upstream_stability)s)") \
+		% {'implementation_user_stability': impl.user_stability, 'implementation_upstream_stability': impl.upstream_stability}
 
 ICON_SIZE = 20.0
 CELL_TEXT_INDENT = int(ICON_SIZE) + 4
@@ -46,12 +47,12 @@ class InterfaceTips(TreeTips):
 				 "interface properties to find out why.")
 
 		if model_column == InterfaceBrowser.VERSION:
-			text = _("Currently preferred version: %s (%s)") % \
-					(impl.get_version(), _stability(impl))
+			text = _("Currently preferred version: %(version)s (%(stability)s)") % \
+					{'version': impl.get_version(), 'stability': _stability(impl)}
 			old_impl = self.mainwindow.original_implementation.get(interface, None)
 			if old_impl is not None and old_impl is not impl:
-				text += _('\nPreviously preferred version: %s (%s)') % \
-					(old_impl.get_version(), _stability(old_impl))
+				text += '\n' + _('Previously preferred version: %(version)s (%(stability)s)') % \
+					{'version': old_impl.get_version(), 'stability': _stability(old_impl)}
 			return text
 
 		assert model_column == InterfaceBrowser.DOWNLOAD_SIZE
@@ -62,8 +63,8 @@ class InterfaceTips(TreeTips):
 			src = self.mainwindow.policy.fetcher.get_best_source(impl)
 			if not src:
 				return _("No downloads available!")
-			return _("Need to download %s (%s bytes)") % \
-					(support.pretty_size(src.size), src.size)
+			return _("Need to download %(pretty_size)s (%(size)s bytes)") % \
+					{'pretty_size': support.pretty_size(src.size), 'size': src.size}
 
 class MenuIconRenderer(gtk.GenericCellRenderer):
 	def __init__(self):
@@ -146,6 +147,7 @@ class InterfaceBrowser:
 	cached_icon = None
 	policy = None
 	original_implementation = None
+	update_icons = False
 
 	INTERFACE = 0
 	INTERFACE_NAME = 1
@@ -248,47 +250,60 @@ class InterfaceBrowser:
 	def set_root(self, root):
 		assert isinstance(root, model.Interface)
 		self.root = root
+
+	def set_update_icons(self, update_icons):
+		if update_icons:
+			# Clear icons cache to make sure they're really updated
+			self.cached_icon = {}
+		self.update_icons = update_icons
 	
-	def _get_icon_from_cache(self, iface):
-		path = iface_cache.get_icon_path(iface)
-		if path:
+	def _load_icon(self, path):
+		assert path
+		try:
+			loader = gtk.gdk.PixbufLoader('png')
 			try:
-				loader = gtk.gdk.PixbufLoader('png')
-				try:
-					loader.write(file(path).read())
-				finally:
-					loader.close()
-				icon = loader.get_pixbuf()
-				assert icon, "Failed to load cached PNG icon data"
-			except Exception, ex:
-				warn("Failed to load cached PNG icon: %s", ex)
-				return None
-			w = icon.get_width()
-			h = icon.get_height()
-			scale = max(w, h, 1) / ICON_SIZE
-			icon = icon.scale_simple(int(w / scale),
-						 int(h / scale),
-						 gtk.gdk.INTERP_BILINEAR)
-			self.cached_icon[iface.uri] = icon
-			return icon
-		else:
+				loader.write(file(path).read())
+			finally:
+				loader.close()
+			icon = loader.get_pixbuf()
+			assert icon, "Failed to load cached PNG icon data"
+		except Exception, ex:
+			warn(_("Failed to load cached PNG icon: %s"), ex)
 			return None
+		w = icon.get_width()
+		h = icon.get_height()
+		scale = max(w, h, 1) / ICON_SIZE
+		icon = icon.scale_simple(int(w / scale),
+					 int(h / scale),
+					 gtk.gdk.INTERP_BILINEAR)
+		return icon
 
 	def get_icon(self, iface):
 		"""Get an icon for this interface. If the icon is in the cache, use that.
 		If not, start a download. If we already started a download (successful or
 		not) do nothing. Returns None if no icon is currently available."""
 		try:
+			# Try the in-memory cache
 			return self.cached_icon[iface.uri]
 		except KeyError:
-			icon = self._get_icon_from_cache(iface)
-			if icon:
-				return icon
+			# Try the on-disk cache
+			iconpath = iface_cache.get_icon_path(iface)
+
+			if iconpath:
+				icon = self._load_icon(iconpath)
+				# (if icon is None, cache the fact that we can't load it)
+				self.cached_icon[iface.uri] = icon
 			else:
-				# Try to download the icon
+				icon = None
+
+			# Download a new icon if we don't have one, or if the
+			# user did a 'Refresh'
+			if iconpath is None or self.update_icons:
 				fetcher = self.policy.download_icon(iface)
 				if fetcher:
-					self.cached_icon[iface.uri] = None	# Only try once
+					if iface.uri not in self.cached_icon:
+						self.cached_icon[iface.uri] = None	# Only try once
+
 					@tasks.async
 					def update_display():
 						yield fetcher
@@ -297,18 +312,25 @@ class InterfaceBrowser:
 							# Try to insert new icon into the cache
 							# If it fails, we'll be left with None in the cached_icon so
 							# we don't try again.
-							self._get_icon_from_cache(iface)
-							self.build_tree()
+							iconpath = iface_cache.get_icon_path(iface)
+							if iconpath:
+								self.cached_icon[iface.uri] = self._load_icon(iconpath)
+								self.build_tree()
+							else:
+								warn("Failed to download icon for '%s'", iface)
 						except Exception, ex:
 							import traceback
 							traceback.print_exc()
 							self.policy.handler.report_error(ex)
 					update_display()
-				# Note: if no icon is available for downloading,
-				# more attempts are made later.
-				# It can happen that no icon is yet available because
-				# the interface was not downloaded yet, in which case
-				# it's desireable to try again once the interface is available
+				# elif fetcher is None: don't store anything in cached_icon
+
+			# Note: if no icon is available for downloading,
+			# more attempts are made later.
+			# It can happen that no icon is yet available because
+			# the interface was not downloaded yet, in which case
+			# it's desireable to try again once the interface is available
+			return icon
 
 		return None
 
@@ -361,19 +383,14 @@ class InterfaceBrowser:
 	
 	def show_popup_menu(self, iface, bev):
 		import bugs
+		import compile
 
-		if properties.have_source_for(self.policy, iface):
-			def compile_cb():
-				import compile
-				compile.compile(self.policy, iface)
-		else:
-			compile_cb = None
+		have_source =  properties.have_source_for(self.policy, iface)
 
 		menu = gtk.Menu()
 		for label, cb in [(_('Show Feeds'), lambda: properties.edit(self.policy, iface)),
 				  (_('Show Versions'), lambda: properties.edit(self.policy, iface, show_versions = True)),
-				  (_('Report a Bug...'), lambda: bugs.report_bug(self.policy, iface)),
-				  (_('Compile...'), compile_cb)]:
+				  (_('Report a Bug...'), lambda: bugs.report_bug(self.policy, iface))]:
 			item = gtk.MenuItem(label)
 			if cb:
 				item.connect('activate', lambda item, cb=cb: cb())
@@ -381,6 +398,26 @@ class InterfaceBrowser:
 				item.set_sensitive(False)
 			item.show()
 			menu.append(item)
+
+		item = gtk.MenuItem(_('Compile'))
+		item.show()
+		menu.append(item)
+		if have_source:
+			compile_menu = gtk.Menu()
+			item.set_submenu(compile_menu)
+
+			item = gtk.MenuItem(_('Automatic'))
+			item.connect('activate', lambda item: compile.compile(self.policy, iface, autocompile = True))
+			item.show()
+			compile_menu.append(item)
+
+			item = gtk.MenuItem(_('Manual...'))
+			item.connect('activate', lambda item: compile.compile(self.policy, iface, autocompile = False))
+			item.show()
+			compile_menu.append(item)
+		else:
+			item.set_sensitive(False)
+
 		menu.popup(None, None, None, bev.button, bev.time)
 	
 	def set_original_implementations(self):
@@ -426,12 +463,16 @@ class InterfaceBrowser:
 						expected = (expected or 0) + dl.expected_size
 					so_far += dl.get_bytes_downloaded_so_far()
 				if expected:
-					fraction = "%s [%.2f%%]" % (pretty_size(expected), 100 * so_far / float(expected))
+					summary = ngettext("(downloading %(downloaded)s/%(expected)s [%(percentage).2f%%])",
+							   "(downloading %(downloaded)s/%(expected)s [%(percentage).2f%%] in %(number)d downloads)",
+							   downloads)
+					values_dict = {'downloaded': pretty_size(so_far), 'expected': pretty_size(expected), 'percentage': 100 * so_far / float(expected), 'number': len(downloads)}
 				else:
-					fraction = _("unknown")
-				if len(downloads) > 1:
-					fraction += _(" in %d downloads") % len(downloads)
-				row[InterfaceBrowser.SUMMARY] = _("(downloading %s/%s)") % (pretty_size(so_far), fraction)
+					summary = ngettext("(downloading %(downloaded)s/unknown)",
+							   "(downloading %(downloaded)s/unknown in %(number)d downloads)",
+							   downloads)
+					values_dict = {'downloaded': pretty_size(so_far), 'number': len(downloads)}
+				row[InterfaceBrowser.SUMMARY] = summary % values_dict
 			else:
 				row[InterfaceBrowser.DOWNLOAD_SIZE] = utils.get_fetch_info(self.policy, impl)
 				row[InterfaceBrowser.SUMMARY] = iface.summary

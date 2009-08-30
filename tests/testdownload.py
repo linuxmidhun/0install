@@ -1,20 +1,25 @@
-#!/usr/bin/env python2.4
+#!/usr/bin/env python2.5
+from __future__ import with_statement
 from basetest import BaseTest
 import sys, tempfile, os
 from StringIO import StringIO
 import unittest, signal
 from logging import getLogger, WARN, ERROR
+from contextlib import contextmanager
 
 sys.path.insert(0, '..')
+os.environ['PYTHONPATH'] = os.path.abspath('..')
 
-# If http_proxy is set it can cause the download tests to fail.
-os.environ["http_proxy"] = ""
+os.environ["http_proxy"] = "localhost:8000"
 
 from zeroinstall.injector import model, autopolicy, gpg, iface_cache, download, reader, trust, handler, background, arch, selections, qdom
 from zeroinstall.zerostore import Store; Store._add_with_helper = lambda *unused: False
 from zeroinstall.support import basedir, tasks
+from zeroinstall.injector import fetch
 import data
 import my_dbus
+
+fetch.DEFAULT_KEY_LOOKUP_SERVER = 'http://localhost:3333/key-info'
 
 import server
 
@@ -28,6 +33,18 @@ sys.modules['dbus'] = my_dbus
 sys.modules['dbus.glib'] = my_dbus
 my_dbus.types = my_dbus
 sys.modules['dbus.types'] = my_dbus
+
+@contextmanager
+def output_suppressed():
+	old_stdout = sys.stdout
+	old_stderr = sys.stderr
+	try:
+		sys.stdout = StringIO()
+		sys.stderr = StringIO()
+		yield
+	finally:
+		sys.stdout = old_stdout
+		sys.stderr = old_stderr
 
 class Reply:
 	def __init__(self, reply):
@@ -77,10 +94,8 @@ class TestDownload(BaseTest):
 			self.child = None
 	
 	def testRejectKey(self):
-		old_out = sys.stdout
-		try:
-			sys.stdout = StringIO()
-			self.child = server.handle_requests('Hello', '6FCF121BE2390E0B.gpg')
+		with output_suppressed():
+			self.child = server.handle_requests('Hello', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B')
 			policy = autopolicy.AutoPolicy('http://localhost:8000/Hello', download_only = False,
 						       handler = DummyHandler())
 			assert policy.need_download()
@@ -89,17 +104,15 @@ class TestDownload(BaseTest):
 				policy.download_and_execute(['Hello'])
 				assert 0
 			except model.SafeException, ex:
-				if "Not signed with a trusted key" not in str(ex):
+				if "Can't find all required implementations" not in str(ex):
 					raise ex
-		finally:
-			sys.stdout = old_out
+				if "Not signed with a trusted key" not in str(policy.handler.ex):
+					raise ex
 	
 	def testRejectKeyXML(self):
-		old_out = sys.stdout
-		try:
-			sys.stdout = StringIO()
-			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg')
-			policy = autopolicy.AutoPolicy('http://localhost:8000/Hello.xml', download_only = False,
+		with output_suppressed():
+			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B')
+			policy = autopolicy.AutoPolicy('http://example.com:8000/Hello.xml', download_only = False,
 						       handler = DummyHandler())
 			assert policy.need_download()
 			sys.stdin = Reply("N\n")
@@ -107,32 +120,30 @@ class TestDownload(BaseTest):
 				policy.download_and_execute(['Hello'])
 				assert 0
 			except model.SafeException, ex:
-				if "Not signed with a trusted key" not in str(ex):
+				if "Can't find all required implementations" not in str(ex):
+					raise ex
+				if "Not signed with a trusted key" not in str(policy.handler.ex):
 					raise
-		finally:
-			sys.stdout = old_out
 	
 	def testImport(self):
-		old_out = sys.stdout
+		from zeroinstall.injector import cli
+
+		rootLogger = getLogger()
+		rootLogger.disabled = True
 		try:
-			from zeroinstall.injector import cli
-
-			rootLogger = getLogger()
-			rootLogger.disabled = True
 			try:
-				try:
-					cli.main(['--import', '-v', 'NO-SUCH-FILE'])
-					assert 0
-				except model.SafeException, ex:
-					assert 'NO-SUCH-FILE' in str(ex)
-			finally:
-				rootLogger.disabled = False
-				rootLogger.setLevel(WARN)
+				cli.main(['--import', '-v', 'NO-SUCH-FILE'])
+				assert 0
+			except model.SafeException, ex:
+				assert 'NO-SUCH-FILE' in str(ex)
+		finally:
+			rootLogger.disabled = False
+			rootLogger.setLevel(WARN)
 
-			hello = iface_cache.iface_cache.get_interface('http://localhost:8000/Hello')
-			self.assertEquals(0, len(hello.implementations))
+		hello = iface_cache.iface_cache.get_interface('http://localhost:8000/Hello')
+		self.assertEquals(0, len(hello.implementations))
 
-			sys.stdout = StringIO()
+		with output_suppressed():
 			self.child = server.handle_requests('6FCF121BE2390E0B.gpg')
 			sys.stdin = Reply("Y\n")
 
@@ -147,8 +158,6 @@ class TestDownload(BaseTest):
 			# Shouldn't need to prompt the second time
 			sys.stdin = None
 			cli.main(['--import', 'Hello'])
-		finally:
-			sys.stdout = old_out
 
 	def testSelections(self):
 		from zeroinstall.injector.cli import _download_missing_selections
@@ -156,18 +165,14 @@ class TestDownload(BaseTest):
 		sels = selections.Selections(root)
 		class Options: dry_run = False
 
-		old_out = sys.stdout
-		try:
-			sys.stdout = StringIO()
-			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', 'HelloWorld.tgz')
+		with output_suppressed():
+			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B', 'HelloWorld.tgz')
 			sys.stdin = Reply("Y\n")
 			_download_missing_selections(Options(), sels)
-			path = iface_cache.iface_cache.stores.lookup(sels.selections['http://localhost:8000/Hello.xml'].id)
+			path = iface_cache.iface_cache.stores.lookup(sels.selections['http://example.com:8000/Hello.xml'].id)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
 
 			assert sels.download_missing(iface_cache.iface_cache, None) is None
-		finally:
-			sys.stdout = old_out
 
 	def testSelectionsWithFeed(self):
 		from zeroinstall.injector.cli import _download_missing_selections
@@ -175,31 +180,24 @@ class TestDownload(BaseTest):
 		sels = selections.Selections(root)
 		class Options: dry_run = False
 
-		old_out = sys.stdout
-		try:
-			sys.stdout = StringIO()
-			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', 'HelloWorld.tgz')
+		with output_suppressed():
+			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B', 'HelloWorld.tgz')
 			sys.stdin = Reply("Y\n")
 
-			from zeroinstall.injector import fetch
 			from zeroinstall.injector.handler import Handler
 			handler = Handler()
 			fetcher = fetch.Fetcher(handler)
-			handler.wait_for_blocker(fetcher.download_and_import_feed('http://localhost:8000/Hello.xml', iface_cache.iface_cache))
+			handler.wait_for_blocker(fetcher.download_and_import_feed('http://example.com:8000/Hello.xml', iface_cache.iface_cache))
 
 			_download_missing_selections(Options(), sels)
-			path = iface_cache.iface_cache.stores.lookup(sels.selections['http://localhost:8000/Hello.xml'].id)
+			path = iface_cache.iface_cache.stores.lookup(sels.selections['http://example.com:8000/Hello.xml'].id)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
 
 			assert sels.download_missing(iface_cache.iface_cache, None) is None
-		finally:
-			sys.stdout = old_out
 	
 	def testAcceptKey(self):
-		old_out = sys.stdout
-		try:
-			sys.stdout = StringIO()
-			self.child = server.handle_requests('Hello', '6FCF121BE2390E0B.gpg', 'HelloWorld.tgz')
+		with output_suppressed():
+			self.child = server.handle_requests('Hello', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B', 'HelloWorld.tgz')
 			policy = autopolicy.AutoPolicy('http://localhost:8000/Hello', download_only = False,
 							handler = DummyHandler())
 			assert policy.need_download()
@@ -210,8 +208,6 @@ class TestDownload(BaseTest):
 			except model.SafeException, ex:
 				if "HelloWorld/Missing" not in str(ex):
 					raise ex
-		finally:
-			sys.stdout = old_out
 	
 	def testRecipe(self):
 		old_out = sys.stdout
@@ -281,10 +277,10 @@ class TestDownload(BaseTest):
 		try:
 			sys.stdout = StringIO()
 			getLogger().setLevel(ERROR)
-			trust.trust_db.trust_key('DE937DD411906ACF7C263B396FCF121BE2390E0B', 'localhost:8000')
+			trust.trust_db.trust_key('DE937DD411906ACF7C263B396FCF121BE2390E0B', 'example.com:8000')
 			self.child = server.handle_requests(server.Give404('/Hello.xml'), 'latest.xml', '/0mirror/keys/6FCF121BE2390E0B.gpg')
-			policy = autopolicy.AutoPolicy('http://localhost:8000/Hello.xml', download_only = False)
-			policy.fetcher.feed_mirror = 'http://localhost:8000/0mirror'
+			policy = autopolicy.AutoPolicy('http://example.com:8000/Hello.xml', download_only = False)
+			policy.fetcher.feed_mirror = 'http://example.com:8000/0mirror'
 
 			refreshed = policy.solve_with_downloads()
 			policy.handler.wait_for_blocker(refreshed)
@@ -297,14 +293,14 @@ class TestDownload(BaseTest):
 		try:
 			sys.stdout = StringIO()
 			getLogger().setLevel(ERROR)
-			iface = iface_cache.iface_cache.get_interface('http://localhost:8000/Hello.xml')
+			iface = iface_cache.iface_cache.get_interface('http://example.com:8000/Hello.xml')
 			mtime = int(os.stat('Hello-new.xml').st_mtime)
 			iface_cache.iface_cache.update_interface_from_network(iface, file('Hello-new.xml').read(), mtime + 10000)
 
-			trust.trust_db.trust_key('DE937DD411906ACF7C263B396FCF121BE2390E0B', 'localhost:8000')
+			trust.trust_db.trust_key('DE937DD411906ACF7C263B396FCF121BE2390E0B', 'example.com:8000')
 			self.child = server.handle_requests(server.Give404('/Hello.xml'), 'latest.xml', '/0mirror/keys/6FCF121BE2390E0B.gpg', 'Hello.xml')
-			policy = autopolicy.AutoPolicy('http://localhost:8000/Hello.xml', download_only = False)
-			policy.fetcher.feed_mirror = 'http://localhost:8000/0mirror'
+			policy = autopolicy.AutoPolicy('http://example.com:8000/Hello.xml', download_only = False)
+			policy.fetcher.feed_mirror = 'http://example.com:8000/0mirror'
 
 			# Update from mirror (should ignore out-of-date timestamp)
 			refreshed = policy.fetcher.download_and_import_feed(iface.uri, iface_cache.iface_cache)
@@ -319,12 +315,12 @@ class TestDownload(BaseTest):
 				assert "New interface's modification time is before old version" in str(ex)
 
 			# Must finish with the newest version
-			self.assertEquals(1209206132, iface_cache.iface_cache._get_signature_date(iface.uri))
+			self.assertEquals(1235911552, iface_cache.iface_cache._get_signature_date(iface.uri))
 		finally:
 			sys.stdout = old_out
 
 	def testBackground(self, verbose = False):
-		p = autopolicy.AutoPolicy('http://localhost:8000/Hello.xml')
+		p = autopolicy.AutoPolicy('http://example.com:8000/Hello.xml')
 		reader.update(iface_cache.iface_cache.get_interface(p.root), 'Hello.xml')
 		p.freshness = 0
 		p.network_use = model.network_minimal

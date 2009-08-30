@@ -4,7 +4,7 @@ from distutils.command.build_py import build_py
 from distutils.command.install import install
 from distutils.command.install_lib import install_lib
 from distutils.command.install_data import install_data
-import os, subprocess
+import os, subprocess, sys
 import glob
 import zeroinstall
 
@@ -14,9 +14,9 @@ class build_with_data(build_py):
 		"zeroinstall/0launch-gui/README",
 		"zeroinstall/0launch-gui/0launch-gui",
 		"zeroinstall/0launch-gui/ZeroInstall-GUI.xml",
-		"zeroinstall/0launch-gui/zero-install.glade",
-		"zeroinstall/gtkui/desktop.glade",
-		"zeroinstall/gtkui/cache.glade",
+		"zeroinstall/0launch-gui/zero-install.ui",
+		"zeroinstall/gtkui/desktop.ui",
+		"zeroinstall/gtkui/cache.ui",
 		"zeroinstall/zerostore/_unlzma",
 	]
 	def run(self):
@@ -45,12 +45,7 @@ class install_data_locale(install_data):
 
 	def _compile_po_files(self):
 		i18nfiles = []
-		for directory in glob.glob("locale/*/LC_MESSAGES"):
-			po = os.path.join(directory, 'zero-install.po')
-			mo = os.path.join(directory, 'zero-install.mo')
-			print 'compiling %s -> %s' % (po, mo)
-			if subprocess.call(['msgfmt', '-o', mo, po]) != 0:
-				raise 'Error while running msgfmt on %s' % directory
+		for mo in glob.glob("locale/*/LC_MESSAGES/zero-install.mo"):
 			dest = os.path.dirname(os.path.join('share', mo))
 			i18nfiles.append((dest, [mo]))
 		return i18nfiles

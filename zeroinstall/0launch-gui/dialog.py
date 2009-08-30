@@ -1,8 +1,7 @@
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
 import gtk
-import gtk.glade
 import os
 from zeroinstall.support import tasks
 from zeroinstall.gtkui import gtkutils
@@ -11,11 +10,11 @@ n_windows = 0
 
 last_error = None
 
-gladefile = os.path.join(os.path.dirname(__file__), 'zero-install.glade')
+builderfile = os.path.join(os.path.dirname(__file__), 'zero-install.ui')
 
 class Template(gtkutils.Template):
 	def __init__(self, root):
-		gtkutils.Template.__init__(self, gladefile, root)
+		gtkutils.Template.__init__(self, builderfile, root)
 
 class Dialog(gtk.Dialog):
 	__shown = False
@@ -78,20 +77,3 @@ def MixedButton(message, stock, x_align = 0.5, button = None):
 	button.add(align)
 	align.add(box)
 	return button
-
-def frame(page, title, content, expand = False):
-	frame = gtk.Frame()
-	label = gtk.Label()
-	label.set_markup('<b>%s</b>' % title)
-	frame.set_label_widget(label)
-	frame.set_shadow_type(gtk.SHADOW_NONE)
-	if type(content) in (str, unicode):
-		content = gtk.Label(content)
-		content.set_alignment(0, 0.5)
-		content.set_selectable(True)
-	frame.add(content)
-	if hasattr(content, 'set_padding'):
-		content.set_padding(8, 4)
-	else:
-		content.set_border_width(8)
-	page.pack_start(frame, expand, True, 0)

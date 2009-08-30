@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
 import os, subprocess
@@ -40,16 +40,18 @@ class Command:
 					status = os.WEXITSTATUS(status)
 					if status == 1 and not self.error:
 						return False # Cancelled
-					dialog.alert(None, "Command failed with exit code %d:\n%s\n" %
-						(status, self.error))
+					dialog.alert(None, _("Command failed with exit code %(status)d:\n%(error)s\n") %
+						{'status': status, 'error': self.error})
 				else:
-					dialog.alert(None, "Command failed:\n%s\n" % self.error)
+					dialog.alert(None, _("Command failed:\n%s\n") % self.error)
 			return False
 
-def compile(policy, interface):
+def compile(policy, interface, autocompile = False):
+	our_min_version = '0.18'	# The oldest version of 0compile we support
+
 	def add_feed():
 		# A new local feed may have been registered, so update the interface from the cache
-		info("0compile command completed successfully. Reloading interface details.")
+		info(_("0compile command completed successfully. Reloading interface details."))
 		reader.update_from_cache(interface)
 		policy.recalculate()
 
@@ -60,28 +62,38 @@ def compile(policy, interface):
 
 		src_policy.recalculate()
 		if not src_policy.ready:
-			raise Exception('Internal error: required source components not found!')
+			raise Exception(_('Internal error: required source components not found!'))
 
 		root_iface = iface_cache.iface_cache.get_interface(src_policy.root)
 		impl = src_policy.implementation[root_iface]
-		min_version = impl.metadata.get(XMLNS_0COMPILE + ' min-version', None)
-		if not min_version: min_version = '0.4'
+
+		min_version = impl.metadata.get(XMLNS_0COMPILE + ' min-version', our_min_version)
 		# Check the syntax is valid and the version is high enough
-		if model.parse_version(min_version) < model.parse_version('0.4'):
-			min_version = '0.4'
+		if model.parse_version(min_version) < model.parse_version(our_min_version):
+			min_version = our_min_version
 
 		# Do the whole build-and-register-feed
 		c = Command()
 		c.run(("0launch",
-			'--message', 'Download the 0compile tool, to compile the source code',
+			'--message', _('Download the 0compile tool, to compile the source code'),
 			'--not-before=' + min_version,
 			"http://0install.net/2006/interfaces/0compile.xml",
 			'gui',
 			'--no-prompt',
 			interface.uri), add_feed)
 
-	# Prompt user to choose source version
-	c = Command()
-	c.run(['0launch',
-		'--message', 'Download the source code to be compiled',
-		'--gui', '--source', '--download-only', interface.uri], build)
+	if autocompile:
+		c = Command()
+		c.run(("0launch",
+			'--message', 'Download the 0compile tool, to compile the source code',
+			'--not-before=' + our_min_version,
+			"http://0install.net/2006/interfaces/0compile.xml",
+			'autocompile',
+			'--gui',
+			interface.uri), add_feed)
+	else:
+		# Prompt user to choose source version
+		c = Command()
+		c.run(['0launch',
+			'--message', _('Download the source code to be compiled'),
+			'--gui', '--source', '--download-only', interface.uri], build)

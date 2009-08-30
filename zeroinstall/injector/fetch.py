@@ -2,9 +2,10 @@
 Downloads feeds, keys, packages and icons.
 """
 
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
+from zeroinstall import _
 import os
 from logging import info, debug, warn
 
@@ -13,6 +14,9 @@ from zeroinstall.injector.namespaces import XMLNS_IFACE, config_site
 from zeroinstall.injector.model import DownloadSource, Recipe, SafeException, escape
 from zeroinstall.injector.iface_cache import PendingFeed, ReplayAttack
 from zeroinstall.injector.handler import NoTrustedKeys
+from zeroinstall.injector import download
+
+DEFAULT_KEY_LOOKUP_SERVER = 'https://keylookup.appspot.com'
 
 def _escape_slashes(path):
 	return path.replace('/', '%23')
@@ -20,26 +24,78 @@ def _escape_slashes(path):
 def _get_feed_dir(feed):
 	"""The algorithm from 0mirror."""
 	if '#' in feed:
-		raise SafeException("Invalid URL '%s'" % feed)
+		raise SafeException(_("Invalid URL '%s'") % feed)
 	scheme, rest = feed.split('://', 1)
 	domain, rest = rest.split('/', 1)
 	for x in [scheme, domain, rest]:
 		if not x or x.startswith(','):
-			raise SafeException("Invalid URL '%s'" % feed)
+			raise SafeException(_("Invalid URL '%s'") % feed)
 	return os.path.join('feeds', scheme, domain, _escape_slashes(rest))
+
+class KeyInfoFetcher:
+	"""Fetches information about a GPG key from a key-info server.
+	@see: L{Fetcher.fetch_key_info}
+	@since: 0.42
+	Example:
+	>>> kf = KeyInfoFetcher('https://server', fingerprint)
+	>>> while True:
+		print kf.info
+		if kf.blocker is None: break
+		print kf.status
+		yield kf.blocker
+	"""
+	def __init__(self, server, fingerprint):
+		self.fingerprint = fingerprint
+		self.info = []
+		self.blocker = None
+
+		if server is None: return
+
+		self.status = _('Fetching key information from %s...') % server
+
+		dl = download.Download(server + '/key/' + fingerprint)
+		dl.start()
+
+		from xml.dom import minidom
+
+		@tasks.async
+		def fetch_key_info():
+			try:
+				tempfile = dl.tempfile
+				yield dl.downloaded
+				self.blocker = None
+				tasks.check(dl.downloaded)
+				tempfile.seek(0)
+				doc = minidom.parse(tempfile)
+				if doc.documentElement.localName != 'key-lookup':
+					raise SafeException(_('Expected <key-lookup>, not <%s>') % doc.documentElement.localName)
+				self.info += doc.documentElement.childNodes
+			except Exception, ex:
+				doc = minidom.parseString('<item vote="bad"/>')
+				root = doc.documentElement
+				root.appendChild(doc.createTextNode(_('Error getting key information: %s') % ex))
+				self.info.append(root)
+
+		self.blocker = fetch_key_info()
 
 class Fetcher(object):
 	"""Downloads and stores various things.
 	@ivar handler: handler to use for user-interaction
 	@type handler: L{handler.Handler}
+	@ivar key_info: caches information about GPG keys
+	@type key_info: {str: L{KeyInfoFetcher}}
+	@ivar key_info_server: the base URL of a key information server
+	@type key_info_server: str
 	@ivar feed_mirror: the base URL of a mirror site for keys and feeds
 	@type feed_mirror: str
 	"""
-	__slots__ = ['handler', 'feed_mirror']
+	__slots__ = ['handler', 'feed_mirror', 'key_info_server', 'key_info']
 
 	def __init__(self, handler):
 		self.handler = handler
 		self.feed_mirror = "http://roscidus.com/0mirror"
+		self.key_info_server = DEFAULT_KEY_LOOKUP_SERVER
+		self.key_info = {}
 
 	@tasks.async
 	def cook(self, required_digest, recipe, stores, force = False, impl_hint = None):
@@ -87,6 +143,9 @@ class Fetcher(object):
 
 	def get_feed_mirror(self, url):
 		"""Return the URL of a mirror for this feed."""
+		import urlparse
+		if urlparse.urlparse(url).hostname == 'localhost':
+			return None
 		return '%s/%s/latest.xml' % (self.feed_mirror, _get_feed_dir(url))
 
 	def download_and_import_feed(self, feed_url, iface_cache, force = False):
@@ -98,7 +157,7 @@ class Fetcher(object):
 		@param force: whether to abort and restart an existing download"""
 		from download import DownloadAborted
 		
-		debug("download_and_import_feed %s (force = %d)", feed_url, force)
+		debug(_("download_and_import_feed %(url)s (force = %(force)d)"), {'url': feed_url, 'force': force})
 		assert not feed_url.startswith('/')
 
 		primary = self._download_and_import_feed(feed_url, iface_cache, force, use_mirror = False)
@@ -128,7 +187,7 @@ class Fetcher(object):
 				# Primary failed
 				primary = None
 				primary_ex = ex
-				warn("Trying mirror, as feed download from %s failed: %s", feed_url, ex)
+				warn(_("Trying mirror, as feed download from %(url)s failed: %(exception)s"), {'url': feed_url, 'exception': ex})
 
 			# Start downloading from mirror...
 			mirror = self._download_and_import_feed(feed_url, iface_cache, force, use_mirror = True)
@@ -147,12 +206,12 @@ class Fetcher(object):
 							primary = None
 							# No point carrying on with the mirror once the primary has succeeded
 							if mirror:
-								info("Primary feed download succeeded; aborting mirror download for " + feed_url)
+								info(_("Primary feed download succeeded; aborting mirror download for %s") % feed_url)
 								mirror.dl.abort()
 					except SafeException, ex:
 						primary = None
 						primary_ex = ex
-						info("Feed download from %s failed; still trying mirror: %s", feed_url, ex)
+						info(_("Feed download from %(url)s failed; still trying mirror: %(exception)s"), {'url': feed_url, 'exception': ex})
 
 				if mirror:
 					try:
@@ -164,11 +223,11 @@ class Fetcher(object):
 								# as the mirror download succeeded.
 								primary_ex = None
 					except ReplayAttack, ex:
-						info("Version from mirror is older than cached version; ignoring it: %s", ex)
+						info(_("Version from mirror is older than cached version; ignoring it: %s"), ex)
 						mirror = None
 						primary_ex = None
 					except SafeException, ex:
-						info("Mirror download failed: %s", ex)
+						info(_("Mirror download failed: %s"), ex)
 						mirror = None
 
 			if primary_ex:
@@ -181,6 +240,7 @@ class Fetcher(object):
 		@param use_mirror: False to use primary location; True to use mirror."""
 		if use_mirror:
 			url = self.get_feed_mirror(feed_url)
+			if url is None: return None
 		else:
 			url = feed_url
 
@@ -200,22 +260,29 @@ class Fetcher(object):
 			else:
 				key_mirror = None
 
-			keys_downloaded = tasks.Task(pending.download_keys(self.handler, feed_hint = feed_url, key_mirror = key_mirror), "download keys for " + feed_url)
+			keys_downloaded = tasks.Task(pending.download_keys(self.handler, feed_hint = feed_url, key_mirror = key_mirror), _("download keys for %s") % feed_url)
 			yield keys_downloaded.finished
 			tasks.check(keys_downloaded.finished)
 
 			iface = iface_cache.get_interface(pending.url)
 			if not iface_cache.update_interface_if_trusted(iface, pending.sigs, pending.new_xml):
-				blocker = self.handler.confirm_trust_keys(iface, pending.sigs, pending.new_xml)
+				blocker = self.handler.confirm_keys(pending, self.fetch_key_info)
 				if blocker:
 					yield blocker
 					tasks.check(blocker)
 				if not iface_cache.update_interface_if_trusted(iface, pending.sigs, pending.new_xml):
-					raise NoTrustedKeys("No signing keys trusted; not importing")
+					raise NoTrustedKeys(_("No signing keys trusted; not importing"))
 
 		task = fetch_feed()
 		task.dl = dl
 		return task
+
+	def fetch_key_info(self, fingerprint):
+		try:
+			return self.key_info[fingerprint]
+		except KeyError:
+			self.key_info[fingerprint] = info = KeyInfoFetcher(self.key_info_server, fingerprint)
+			return info
 
 	def download_impl(self, impl, retrieval_method, stores, force = False):
 		"""Download an implementation.
@@ -233,8 +300,8 @@ class Fetcher(object):
 		from zeroinstall.zerostore import manifest
 		alg = impl.id.split('=', 1)[0]
 		if alg not in manifest.algorithms:
-			raise SafeException("Unknown digest algorithm '%s' for '%s' version %s" %
-					(alg, impl.feed.get_name(), impl.get_version()))
+			raise SafeException(_("Unknown digest algorithm '%(algorithm)s' for '%(implementation)s' version %(version)s") %
+					{'algorithm': alg, 'implementation': impl.feed.get_name(), 'version': impl.get_version()})
 
 		@tasks.async
 		def download_impl():
@@ -250,7 +317,7 @@ class Fetcher(object):
 				yield blocker
 				tasks.check(blocker)
 			else:
-				raise Exception("Unknown download type for '%s'" % retrieval_method)
+				raise Exception(_("Unknown download type for '%s'") % retrieval_method)
 
 			self.handler.impl_added_to_store(impl)
 		return download_impl()
@@ -269,40 +336,47 @@ class Fetcher(object):
 
 		url = download_source.url
 		if not (url.startswith('http:') or url.startswith('https:') or url.startswith('ftp:')):
-			raise SafeException("Unknown scheme in download URL '%s'" % url)
+			raise SafeException(_("Unknown scheme in download URL '%s'") % url)
 
 		mime_type = download_source.type
 		if not mime_type:
 			mime_type = unpack.type_from_url(download_source.url)
 		if not mime_type:
-			raise SafeException("No 'type' attribute on archive, and I can't guess from the name (%s)" % download_source.url)
+			raise SafeException(_("No 'type' attribute on archive, and I can't guess from the name (%s)") % download_source.url)
 		unpack.check_type_ok(mime_type)
 		dl = self.handler.get_download(download_source.url, force = force, hint = impl_hint)
 		dl.expected_size = download_source.size + (download_source.start_offset or 0)
 		return (dl.downloaded, dl.tempfile)
 
-	def download_icon(self, interface, force = False):
+	def download_icon(self, interface, force = False, modification_time = None):
 		"""Download an icon for this interface and add it to the
 		icon cache. If the interface has no icon or we are offline, do nothing.
 		@return: the task doing the import, or None
 		@rtype: L{tasks.Task}"""
-		debug("download_icon %s (force = %d)", interface, force)
+		debug(_("download_icon %(interface)s (force = %(force)d)"), {'interface': interface, 'force': force})
 
 		# Find a suitable icon to download
 		for icon in interface.get_metadata(XMLNS_IFACE, 'icon'):
 			type = icon.getAttribute('type')
 			if type != 'image/png':
-				debug('Skipping non-PNG icon')
+				debug(_('Skipping non-PNG icon'))
 				continue
 			source = icon.getAttribute('href')
 			if source:
 				break
-			warn('Missing "href" attribute on <icon> in %s', interface)
+			warn(_('Missing "href" attribute on <icon> in %s'), interface)
 		else:
-			info('No PNG icons found in %s', interface)
+			info(_('No PNG icons found in %s'), interface)
 			return
 
-		dl = self.handler.get_download(source, force = force, hint = interface)
+		try:
+			dl = self.handler.monitored_downloads[source]
+			if dl and force:
+				dl.abort()
+				raise KeyError
+		except KeyError:
+			dl = download.Download(source, hint = interface, modification_time = modification_time)
+			self.handler.monitor_download(dl)
 
 		@tasks.async
 		def download_and_add_icon():
@@ -310,6 +384,7 @@ class Fetcher(object):
 			yield dl.downloaded
 			try:
 				tasks.check(dl.downloaded)
+				if dl.unmodified: return
 				stream.seek(0)
 
 				import shutil
@@ -327,13 +402,12 @@ class Fetcher(object):
 
 		to_download = []
 		for impl in implementations:
-			debug("start_downloading_impls: for %s get %s", impl.feed, impl)
+			debug(_("start_downloading_impls: for %(feed)s get %(implementation)s"), {'feed': impl.feed, 'implementation': impl})
 			source = self.get_best_source(impl)
 			if not source:
-				raise SafeException("Implementation " + impl.id + " of "
-					"interface " + impl.feed.get_name() + " cannot be "
-					"downloaded (no download locations given in "
-					"interface!)")
+				raise SafeException(_("Implementation %(implementation_id)s of interface %(interface)s"
+					" cannot be downloaded (no download locations given in "
+					"interface!)") % {'implementation_id': impl.id, 'interface': impl.feed.get_name()})
 			to_download.append((impl, source))
 
 		for impl, source in to_download:

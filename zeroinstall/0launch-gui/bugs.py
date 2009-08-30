@@ -1,4 +1,4 @@
-# Copyright (C) 2007, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See http://0install.net/0compile.html
 
 import sys, os
@@ -17,7 +17,7 @@ def report_bug(policy, iface):
 	if os.path.exists(issue_file):
 		issue = file(issue_file).read().strip()
 	else:
-		issue = "(file '%s' not found)" % issue
+		issue = "(file '%s' not found)" % issue_file
 
 	text = 'Problem with %s\n' % iface.uri
 	if iface.uri != policy.root:
@@ -40,7 +40,14 @@ def report_bug(policy, iface):
 				text += '  From feed: %s\n' % impl.feed.url
 			text += '         ID: %s\n' % impl.id
 		else:
-			text += '    No implementation selected\n'
+			impls = policy.solver.details.get(chosen_iface, None)
+			if impls:
+				best, reason = impls[0]
+				note = 'best was %s, but: %s' % (best, reason)
+			else:
+				note = 'not considered; %d available' % len(chosen_iface.implementations)
+
+			text += '    No implementation selected (%s)\n' % note
 
 	if hasattr(os, 'uname'):
 		text += '\nSystem:\n  %s\n\nIssue:\n  %s\n' % ('\n  '.join(os.uname()), issue)
@@ -57,7 +64,7 @@ class BugReporter(dialog.Dialog):
 		self.sf_group_id = 76468
 		self.sf_artifact_id = 929902
 
-		self.set_title('Report a Bug')
+		self.set_title(_('Report a Bug'))
 		self.set_modal(True)
 		self.set_has_separator(False)
 		self.policy = policy
@@ -103,10 +110,10 @@ class BugReporter(dialog.Dialog):
 			return swin, tv.get_buffer()
 
 		actual = text_area()
-		frame("What doesn't work?", *actual)
+		frame(_("What doesn't work?"), *actual)
 
 		expected = text_area()
-		frame('What did you expect to happen?', *expected)
+		frame(_('What did you expect to happen?'), *expected)
 
 		errors_box = gtk.VBox(False, 0)
 		errors_swin, errors_buffer = text_area(mono = True)
@@ -114,17 +121,17 @@ class BugReporter(dialog.Dialog):
 		buttons = gtk.HButtonBox()
 		buttons.set_layout(gtk.BUTTONBOX_START)
 		errors_box.pack_start(buttons, False, True, 4)
-		get_errors = gtk.Button('Run it now and record the output')
+		get_errors = gtk.Button(_('Run it now and record the output'))
 		get_errors.connect('clicked', lambda button: self.collect_output(errors_buffer))
 		buttons.add(get_errors)
 
-		frame('Are any errors or warnings displayed?', errors_box, errors_buffer)
+		frame(_('Are any errors or warnings displayed?'), errors_box, errors_buffer)
 
 		if dialog.last_error:
 			errors_buffer.insert_at_cursor(str(dialog.last_error))
 
 		environ = text_area(env, mono = True)
-		frame('Information about your setup', *environ)
+		frame(_('Information about your setup'), *environ)
 
 		browse_url = 'http://sourceforge.net/tracker/?group_id=%d&atid=%d' % (self.sf_group_id, self.sf_artifact_id)
 		location_hbox = gtk.HBox(False, 4)
@@ -150,10 +157,10 @@ class BugReporter(dialog.Dialog):
 					start = buffer.get_start_iter()
 					end = buffer.get_end_iter()
 					text += '%s\n\n%s\n\n' % (title, buffer.get_text(start, end).strip())
-				title = 'Bug for %s' % iface.get_name()
+				title = _('Bug for %s') % iface.get_name()
 				self.report_bug(title, text)
 				self.destroy()
-				dialog.alert(self, "Your bug report has been sent. Thank you.",
+				dialog.alert(self, _("Your bug report has been sent. Thank you."),
 					     type = gtk.MESSAGE_INFO)
 			else:
 				self.destroy()

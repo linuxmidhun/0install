@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
 import zeroinstall
@@ -54,7 +54,7 @@ def have_source_for(policy, interface):
 		except zeroinstall.NeedDownload:
 			pass	# OK, will get called again later
 		except Exception, ex:
-			warn("Failed to load feed '%s': %s", f.uri, str(ex))
+			warn(_("Failed to load feed '%(feed)s': %(exception)s"), {'feed': f.uri, 'exception': str(ex)})
 	for x in impls:
 		if x.machine == 'src':
 			return True
@@ -84,6 +84,13 @@ class Description:
 				import browser
 				browser.open_in_browser(target)
 	
+	def strtime(self, secs):
+		try:
+			from locale import nl_langinfo, D_T_FMT
+			return time.strftime(nl_langinfo(D_T_FMT), time.localtime(secs))
+		except ImportError, ValueError:
+			return time.ctime(secs)
+
 	def set_details(self, interface):
 		buffer = self.buffer
 		heading_style = self.heading_style
@@ -100,20 +107,20 @@ class Description:
 
 		# (converts to local time)
 		if interface.last_modified:
-			buffer.insert(iter, '\nLast upstream change: %s' % time.ctime(interface.last_modified))
+			buffer.insert(iter, '\n' + _('Last upstream change: %s') % self.strtime(interface.last_modified))
 
 		if interface.last_checked:
-			buffer.insert(iter, '\nLast checked: %s' % time.ctime(interface.last_checked))
+			buffer.insert(iter, '\n' + _('Last checked: %s') % self.strtime(interface.last_checked))
 
 		last_check_attempt = iface_cache.get_last_check_attempt(interface.uri)
 		if last_check_attempt:
 			if interface.last_checked and interface.last_checked >= last_check_attempt:
 				pass	# Don't bother reporting successful attempts
 			else:
-				buffer.insert(iter, '\nLast check attempt: %s (failed or in progress)' %
-						time.ctime(last_check_attempt))
+				buffer.insert(iter, '\n' + _('Last check attempt: %s (failed or in progress)') %
+						self.strtime(last_check_attempt))
 
-		buffer.insert_with_tags(iter, '\n\nDescription\n', heading_style)
+		buffer.insert_with_tags(iter, '\n\n' + _('Description') + '\n', heading_style)
 
 		paragraphs = [format_para(p) for p in (interface.description or "-").split('\n\n')]
 
@@ -125,32 +132,32 @@ class Description:
 			if need_gap:
 				buffer.insert(iter, '\n')
 				need_gap = False
-			buffer.insert(iter, 'Homepage: ')
+			buffer.insert(iter, _('Homepage: '))
 			buffer.insert_with_tags(iter, '%s\n' % x.content, self.link_style)
 
-		buffer.insert_with_tags(iter, '\nSignatures\n', heading_style)
+		buffer.insert_with_tags(iter, '\n' + _('Signatures') + '\n', heading_style)
 		sigs = iface_cache.get_cached_signatures(interface.uri)
 		if sigs:
 			for sig in sigs:
 				if isinstance(sig, gpg.ValidSig):
-					name = '<unknown>'
+					name = _('<unknown>')
 					details = sig.get_details()
 					for item in details:
 						if item[0] in ('pub', 'uid') and len(item) > 9:
 							name = item[9]
 							break
-					buffer.insert_with_tags(iter, 'Valid signature by "%s"\n- Dated: %s\n- Fingerprint: %s\n' %
-							(name, time.ctime(sig.get_timestamp()), sig.fingerprint))
+					buffer.insert_with_tags(iter, _('Valid signature by "%(name)s"\n- Dated: %(sig_date)s\n- Fingerprint: %(sig_fingerprint)s\n') %
+							{'name': name, 'sig_date': time.strftime('%c', time.localtime(sig.get_timestamp())), 'sig_fingerprint': sig.fingerprint})
 					if not sig.is_trusted():
 						if interface.uri.startswith('/'):
-							buffer.insert_with_tags(iter, 'WARNING: This key is not in the trusted list\n')
+							buffer.insert_with_tags(iter, _('WARNING: This key is not in the trusted list') + '\n')
 						else:
-							buffer.insert_with_tags(iter, 'WARNING: This key is not in the trusted list (either you removed it, or '
-											'you trust one of the other signatures)\n')
+							buffer.insert_with_tags(iter, _('WARNING: This key is not in the trusted list (either you removed it, or '
+											'you trust one of the other signatures)') + '\n')
 				else:
 					buffer.insert_with_tags(iter, '%s\n' % sig)
 		else:
-			buffer.insert_with_tags(iter, 'No signature information (old style interface or out-of-date cache)\n')
+			buffer.insert_with_tags(iter, _('No signature information (old style interface or out-of-date cache)') + '\n')
 
 class Feeds:
 	URI = 0
@@ -190,7 +197,7 @@ class Feeds:
 						dialog.alert(self.get_toplevel(),
 							_("Can't remove '%s' as you didn't add it.") % feed_uri)
 						return
-			raise Exception("Missing feed '%s'!" % feed_uri)
+			raise Exception(_("Missing feed '%s'!") % feed_uri)
 		self.remove_feed_button.connect('clicked', remove_feed)
 
 		self.tv = widgets.get_widget('feeds_list')
@@ -256,7 +263,7 @@ class Properties:
 
 		window = widgets.get_widget('interface_properties')
 		self.window = window
-		window.set_title('Properties for ' + interface.get_name())
+		window.set_title(_('Properties for %s') % interface.get_name())
 		window.set_default_size(-1, gtk.gdk.screen_height() / 3)
 
 		self.compile_button = widgets.get_widget('compile')
@@ -279,9 +286,9 @@ class Properties:
 		stability.set_active(0)
 		if interface.stability_policy:
 			i = [stable, testing, developer].index(interface.stability_policy)
-			if i == -1:
-				warn("Unknown stability policy %s", interface.stability_policy)
-				i = 0
+			i += 1
+			if i == 0:
+				warn(_("Unknown stability policy %s"), interface.stability_policy)
 		else:
 			i = 0
 		stability.set_active(i)
@@ -314,7 +321,10 @@ class Properties:
 
 		if show_versions:
 			notebook.next_page()
-	
+
+	def show(self):
+		self.window.show()
+
 	def destroy(self):
 		self.window.destroy()
 	
@@ -325,7 +335,7 @@ class Properties:
 		ranked_items = self.policy.solver.details.get(self.interface, None)
 		if ranked_items is None:
 			# The Solver didn't get this far, but we should still display them!
-			ranked_items = [(impl, "(solve aborted before here)")
+			ranked_items = [(impl, _("(solve aborted before here)"))
 					for impl in self.interface.implementations.values()]
 			ranked_items.sort()
 		self.use_list.set_items(ranked_items)
@@ -385,15 +395,15 @@ def add_remote_feed(policy, parent, interface):
 
 						d.set_sensitive(True)
 						if not iface.name:
-							error('Failed to read interface')
+							error(_('Failed to read interface'))
 							return
 						if not iface.feed_for:
-							error("Feed '%s' is not a feed for '%s'." % (iface.get_name(), interface.get_name()))
+							error(_("Feed '%(feed)s' is not a feed for '%(feed_for)s'.") % {'feed': iface.get_name(), 'feed_for': interface.get_name()})
 						elif interface.uri not in iface.feed_for:
-							error("This is not a feed for '%s'.\nOnly for:\n%s" %
-								(interface.uri, '\n'.join(iface.feed_for)))
+							error(_("This is not a feed for '%(uri)s'.\nOnly for:\n%(feed_for)s") %
+								{'uri': interface.uri, 'feed_for': '\n'.join(iface.feed_for)})
 						elif iface.uri in [f.uri for f in interface.feeds]:
-							error("Feed from '%s' has already been added!" % iface.uri)
+							error(_("Feed from '%s' has already been added!") % iface.uri)
 						else:
 							interface.extra_feeds.append(Feed(iface.uri, arch = None, user_override = True))
 							writer.save_interface(interface)
@@ -410,47 +420,51 @@ def add_remote_feed(policy, parent, interface):
 		policy.handler.report_error(ex)
 
 def add_local_feed(policy, interface):
-	sel = gtk.FileSelection(_('Select XML feed file'))
-	sel.set_has_separator(False)
-	def ok(b):
+	chooser = gtk.FileChooserDialog(_('Select XML feed file'), action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
+	def ok(feed):
 		from zeroinstall.injector import reader
-		feed = sel.get_filename()
 		try:
 			feed_targets = policy.get_feed_targets(feed)
 			if interface not in feed_targets:
-				raise Exception("Not a valid feed for '%s'; this is a feed for:\n%s" %
-						(interface.uri,
-						'\n'.join([f.uri for f in feed_targets])))
+				raise Exception(_("Not a valid feed for '%(uri)s'; this is a feed for:\n%(feed_for)s") %
+						{'uri': interface.uri,
+						'feed_for': '\n'.join([f.uri for f in feed_targets])})
 			if interface.get_feed(feed):
-				dialog.alert(None, 'This feed is already registered.')
+				dialog.alert(None, _('This feed is already registered.'))
 			else:
 				interface.extra_feeds.append(Feed(feed, user_override = True, arch = None))
 
 			writer.save_interface(interface)
-			sel.destroy()
+			chooser.destroy()
 			reader.update_from_cache(interface)
 			policy.recalculate()
 		except Exception, ex:
-			dialog.alert(None, "Error in feed file '%s':\n\n%s" % (feed, str(ex)))
-		
-	sel.ok_button.connect('clicked', ok)
-	sel.cancel_button.connect('clicked', lambda b: sel.destroy())
-	sel.show()
-	
+			dialog.alert(None, _("Error in feed file '%(feed)s':\n\n%(exception)s") % {'feed': feed, 'exception': str(ex)})
+
+	def check_response(widget, response):
+		if response == gtk.RESPONSE_OK:
+			ok(widget.get_filename())
+		elif response == gtk.RESPONSE_CANCEL:
+			widget.destroy()
+
+	chooser.connect('response', check_response)
+	chooser.show()
+
 def edit(policy, interface, show_versions = False):
 	assert isinstance(interface, Interface)
 	if interface in _dialogs:
 		_dialogs[interface].destroy()
 	_dialogs[interface] = Properties(policy, interface, show_versions)
+	_dialogs[interface].show()
 
-properties_help = help_box.HelpBox("Injector Properties Help",
-('Interface properties', """
-This window displays information about an interface. There are two tabs at the top: \
+properties_help = help_box.HelpBox(_("Injector Properties Help"),
+(_('Interface properties'), '\n' +
+_("""This window displays information about an interface. There are two tabs at the top: \
 Feeds shows the places where the injector looks for implementations of the interface, while \
-Versions shows the list of implementations found (from all feeds) in order of preference."""),
+Versions shows the list of implementations found (from all feeds) in order of preference.""")),
 
-('The Feeds tab', """
-At the top is a list of feeds. By default, the injector uses the full name of the interface \
+(_('The Feeds tab'), '\n' +
+_("""At the top is a list of feeds. By default, the injector uses the full name of the interface \
 as the default feed location (so if you ask it to run the program "http://foo/bar.xml" then it will \
 by default get the list of versions by downloading "http://foo/bar.xml".
 
@@ -465,10 +479,10 @@ Below the list of feeds is a box describing the selected one:
 - 'Last upstream change' shows the version of the cached copy of the interface file.
 - 'Last checked' is the last time a fresh copy of the upstream interface file was \
 downloaded.
-- Then there is a longer description of the interface."""),
+- Then there is a longer description of the interface.""")),
 
-('The Versions tab', """
-This tab shows a list of all known implementations of the interface, from all the feeds. \
+(_('The Versions tab'), '\n' +
+_("""This tab shows a list of all known implementations of the interface, from all the feeds. \
 The columns have the following meanings:
 
 Version gives the version number. High-numbered versions are considered to be \
@@ -490,10 +504,9 @@ is provided by your distribution's package manager, not by Zero Install. \
 In off-line mode, only cached implementations are considered for use.
 
 Arch indicates what kind of computer system the implementation is for, or 'any' \
-if it works with all types of system.
-"""),
-('Sort order', """
-The implementations are listed in the injector's currently preferred order (the one \
+if it works with all types of system.""") + '\n'),
+(_('Sort order'), '\n' +
+_("""The implementations are listed in the injector's currently preferred order (the one \
 at the top will actually be used). Usable implementations all come before unusable \
 ones.
 
@@ -513,11 +526,9 @@ non-cached.
 
 - Then, higher-numbered versions come before low-numbered ones.
 
-- Then cached come before non-cached (for 'Full' network use mode).
-"""),
+- Then cached come before non-cached (for 'Full' network use mode).""") + '\n'),
 
-('Compiling', """
-If there is no binary available for your system then you may be able to compile one from \
+(_('Compiling'), '\n' +
+_("""If there is no binary available for your system then you may be able to compile one from \
 source by clicking on the Compile button. If no source is available, the Compile button will \
-be shown shaded.
-"""))
+be shown shaded.""") + '\n'))

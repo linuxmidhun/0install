@@ -3,11 +3,12 @@ Convenience routines for performing common operations.
 @since: 0.28
 """
 
-# Copyright (C) 2007, Thomas Leonard
+# Copyright (C) 2009, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
 import os, sys, logging
 from zeroinstall import support
+from zeroinstall import _
 
 def get_selections_gui(iface_uri, gui_args, test_callback = None):
 	"""Run the GUI to choose and download a set of implementations.
