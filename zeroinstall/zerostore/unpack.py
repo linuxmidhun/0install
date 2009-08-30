@@ -308,7 +308,7 @@ def extract_zip(stream, destdir, extract, start_offset = 0):
 		if extract:
 			filename = os.path.join(destdir, extract, '.xbit')
 		else:
-			os.path.join(destdir, '.xbit')
+			filename = os.path.join(destdir, '.xbit')
 		xbit = file(filename, 'wb')
 		for item in xbit_files:
 			xbit.write(item + '\n')
