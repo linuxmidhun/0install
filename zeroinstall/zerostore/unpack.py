@@ -295,6 +295,8 @@ def extract_cab(stream, destdir, extract, start_offset = 0):
 	
 def extract_dmg(stream, destdir, extract, start_offset = 0):
 	"@since: 0.42"
+	if extract:
+		raise SafeException(_('Sorry, but the "extract" attribute is not yet supported for DMGs'))
 
 	stream.seek(start_offset)
 	# hdiutil can't read from stdin, so make a copy...
@@ -303,14 +305,9 @@ def extract_dmg(stream, destdir, extract, start_offset = 0):
 	shutil.copyfileobj(stream, dmg_copy)
 	dmg_copy.close()
 
-	if extract:
-		subdir = extract
-	else:
-		subdir = '*'
-
 	mountpoint = mkdtemp(prefix='archive')
 	os.system("hdiutil attach -quiet -mountpoint %s '%s'" % (mountpoint, dmg_copy_name))
-	os.system("cp -pR %s/%s '%s'" % (mountpoint, subdir, destdir))
+	os.system("cp -pR %s/* '%s'" % (mountpoint, destdir))
 	os.system("hdiutil detach -quiet %s" % mountpoint)
 	os.rmdir(mountpoint)
 	os.unlink(dmg_copy_name)
