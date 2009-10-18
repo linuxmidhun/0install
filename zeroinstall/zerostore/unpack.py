@@ -306,7 +306,7 @@ def extract_dmg(stream, destdir, extract, start_offset = 0):
 	dmg_copy.close()
 
 	mountpoint = mkdtemp(prefix='archive')
-	os.system("hdiutil attach -quiet -mountpoint %s '%s'" % (mountpoint, dmg_copy_name))
+	os.system("hdiutil attach -quiet -mountpoint %s -nobrowse '%s'" % (mountpoint, dmg_copy_name))
 	os.system("cp -pR %s/* '%s'" % (mountpoint, destdir))
 	os.system("hdiutil detach -quiet %s" % mountpoint)
 	os.rmdir(mountpoint)
