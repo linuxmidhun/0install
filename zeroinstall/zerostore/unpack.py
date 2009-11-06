@@ -94,9 +94,7 @@ def check_type_ok(mime_type):
 					"I need to extract it. Install the package containing it (it's probably called 'bzip2') "
 					"first."))
 	elif mime_type == 'application/zip':
-		if not find_in_path('unzip'):
-			raise SafeException(_("This package looks like a zip-compressed archive, but you don't have the 'unzip' command "
-					"I need to extract it. Install the package containing it first."))
+		pass
 	elif mime_type == 'application/vnd.ms-cab-compressed':
 		if not find_in_path('cabextract'):
 			raise SafeException(_("This package looks like a Microsoft Cabinet archive, but you don't have the 'cabextract' command "
@@ -265,7 +263,7 @@ def extract_cab(stream, destdir, extract, start_offset = 0):
 
 	_extract(stream, destdir, ['cabextract', '-s', '-q', 'archive.cab'])
 	os.unlink(cab_copy_name)
-	
+
 def extract_zip(stream, destdir, extract, start_offset = 0):
 	if extract:
 		# Limit the characters we accept, to avoid sending dodgy
@@ -274,36 +272,66 @@ def extract_zip(stream, destdir, extract, start_offset = 0):
 			raise SafeException(_('Illegal character in extract attribute'))
 
 	stream.seek(start_offset)
-	# unzip can't read from stdin, so make a copy...
-	zip_copy_name = os.path.join(destdir, 'archive.zip')
-	zip_copy = file(zip_copy_name, 'wb')
-	shutil.copyfileobj(stream, zip_copy)
-	zip_copy.close()
 
-	args = ['unzip', '-q', '-o', 'archive.zip']
+	#The next line is commented because Info-Zip's unzip for Windows
+	#doesn't use TZ env var and the extracted files that come from a
+	#zip file without Unix Time data will have a different time for
+	#each time zone and as a result the hash verification will fail
 
-	if extract:
-		args.append(extract + '/*')
+	#if find_in_path('unzip'):
+	if False:
+		# unzip can't read from stdin, so make a copy...
+		zip_copy_name = os.path.join(destdir, 'archive.zip')
+		zip_copy = file(zip_copy_name, 'wb')
+		shutil.copyfileobj(stream, zip_copy)
+		zip_copy.close()
 
-	_extract(stream, destdir, args)
+		args = ['unzip', '-q', '-o', 'archive.zip']
 
-	xbit_files = []
-	p = subprocess.Popen('unzip -Z -s ' + zip_copy_name, stdout=subprocess.PIPE, universal_newlines=True)
-	o = p.communicate()[0]
-	for line in o.split('\n'):
-		#-rwxrwxrwx  2.3 unx    24576 bx defX  5-Jun-09 08:54 filename.ext
-		#line[:10] permissions
-		#line[11:15] version
-		#line[16:19] fs
-		#line[53:]
-		if line[16:19] == 'unx':
-			if line[3] == 'x':
-				path = line[53:]
-				if extract:
-					if path.startswith(extract + '/'):
-						xbit_files += [path[len(extract):]]
-				else:
-					xbit_files += ['/' + path]
+		if extract:
+			args.append(extract + '/*')
+
+		_extract(stream, destdir, args)
+
+		xbit_files = []
+		p = subprocess.Popen('unzip -Z -s ' + zip_copy_name, stdout=subprocess.PIPE, universal_newlines=True)
+		o = p.communicate()[0]
+		for line in o.split('\n'):
+			#-rwxrwxrwx  2.3 unx    24576 bx defX  5-Jun-09 08:54 filename.ext
+			#line[:10] permissions
+			#line[11:15] version
+			#line[16:19] fs
+			#line[53:]
+			if line[16:19] == 'unx':
+				if line[3] == 'x':
+					path = line[53:]
+					if extract:
+						if path.startswith(extract + '/'):
+							xbit_files += [path[len(extract):]]
+					else:
+							xbit_files += ['/' + path]
+
+		os.unlink(zip_copy_name)
+	else:
+		import infozipfile
+
+		zf = infozipfile.InfoZipFile(stream, 'r')
+
+		file_list = []
+		xbit_files = []
+		for zi in zf.infolist():
+			if extract:
+				if not zi.filename.startswith(extract):
+					continue
+				fn = zi.filename[len(extract):]
+			else:
+				fn = '/' + zi.filename
+			file_list += [zi]
+			if zi.is_executable:
+				xbit_files += [fn]
+
+		zf.extractall(destdir, file_list)
+
 	if xbit_files:
 		if extract:
 			filename = os.path.join(destdir, extract, '.xbit')
@@ -313,8 +341,6 @@ def extract_zip(stream, destdir, extract, start_offset = 0):
 		for item in xbit_files:
 			xbit.write(item + '\n')
 		xbit.close()
-
-	os.unlink(zip_copy_name)
 
 def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 	if extract:
