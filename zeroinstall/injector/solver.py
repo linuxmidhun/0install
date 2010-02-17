@@ -263,7 +263,7 @@ class DefaultSolver(Solver):
 			"""
 			if isinstance(impl, model.DistributionImplementation):
 				return impl.installed
-			if impl.id.startswith('/'):
+			if os.path.isabs(impl.id):
 				return os.path.exists(impl.id)
 			else:
 				try:

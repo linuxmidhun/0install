@@ -443,7 +443,7 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 
 		for tarinfo in ext_dirs:
 			dirname = os.path.join(destdir, tarinfo.name)
-			#os.utime(dirname, (tarinfo.mtime, tarinfo.mtime))
+			if not os.name == "nt": os.utime(dirname, (tarinfo.mtime, tarinfo.mtime))
 
 		tar.close()
 

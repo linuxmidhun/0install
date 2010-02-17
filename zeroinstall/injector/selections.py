@@ -197,7 +197,7 @@ class Selections(object):
 		needed_downloads = []
 		for sel in self.selections.values():
 			iid = sel.id
-			if not iid.startswith('/'):
+			if not os.path.isabs(iid):
 				try:
 					iface_cache.stores.lookup(iid)
 				except NotStored, ex:

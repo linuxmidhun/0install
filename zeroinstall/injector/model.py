@@ -226,10 +226,12 @@ class EnvironmentBinding(Binding):
 			old_value = self.default or defaults.get(self.name, None)
 		if old_value is None:
 			return extra
+		if os.name == "nt": envVarSeparator = ';'
+		else: envVarSeparator = ':'
 		if self.mode == EnvironmentBinding.PREPEND:
-			return extra + ';' + old_value
+			return extra + envVarSeparator + old_value
 		else:
-			return old_value + ';' + extra
+			return old_value + envVarSeparator + extra
 
 	def _toxml(self, doc):
 		"""Create a DOM element for this binding.
@@ -479,7 +481,7 @@ class Interface(object):
 
 	def __init__(self, uri):
 		assert uri
-		if uri.startswith('http:') or uri.startswith('/'):
+		if uri.startswith('http:') or os.path.isabs(uri):
 			self.uri = uri
 		else:
 			raise SafeException(_("Interface name '%s' doesn't start "
@@ -674,7 +676,7 @@ class ZeroInstallFeed(object):
 			id = item.getAttribute('id')
 			if id is None:
 				raise InvalidInterface(_("Missing 'id' attribute on %s") % item)
-			if local_dir and (id.startswith('/') or id.startswith('.')):
+			if local_dir and (os.path.isabs(id) or id.startswith('.')):
 				impl = self._get_impl(os.path.abspath(os.path.join(local_dir, id)))
 			else:
 				if '=' not in id:

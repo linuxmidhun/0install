@@ -81,7 +81,7 @@ def optimise(impl_dir):
 		for line in ms:
 			if line[0] == 'D':
 				itype, path = line.split(' ', 1)
-				assert path.startswith('/')
+				assert os.path.isabs(path)
 				dir = path[1:-1]	# Strip slash and newline
 				continue
 

@@ -64,7 +64,7 @@ class OldSHA1(Algorithm):
 			# Otherwise, you can name a file so that the part after the \n
 			# would be interpreted as another line in the manifest.
 			if '\n' in sub: raise BadDigest("Newline in filename '%s'" % sub)
-			assert sub.startswith('/')
+			assert os.path.isabs(sub)
 
 			if sub == '/.manifest': return
 
@@ -330,7 +330,7 @@ def _parse_manifest(manifest_data):
 			data = line.split(' ', 1)
 			if len(data) != 2: raise BadDigest(_("Bad line '%s'") % line)
 			path = data[-1]
-			if not path.startswith('/'): raise BadDigest(_("Not absolute: '%s'") % line)
+			if not os.path.isabs(path): raise BadDigest(_("Not absolute: '%s'") % line)
 			path = path[1:]
 			dir = path
 		elif line[0] == 'S':
@@ -357,7 +357,7 @@ def _copy_files(alg, wanted, source, target):
 	for line in alg.generate_manifest(source):
 		if line[0] == 'D':
 			type, name = line.split(' ', 1)
-			assert name.startswith('/')
+			assert os.path.isabs(name)
 			dir = name[1:]
 			path = dir
 		elif line[0] == 'S':
@@ -429,7 +429,7 @@ class HashLibAlgorithm(Algorithm):
 			# Otherwise, you can name a file so that the part after the \n
 			# would be interpreted as another line in the manifest.
 			if '\n' in sub: raise BadDigest(_("Newline in filename '%s'") % sub)
-			assert sub.startswith('/')
+			assert os.path.isabs(sub)
 
 			full = os.path.join(root, sub[1:])
 			info = os.lstat(full)

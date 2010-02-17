@@ -59,7 +59,7 @@ def _do_bindings(impl, bindings):
 			do_env_binding(b, _get_implementation_path(impl.id))
 
 def _get_implementation_path(id):
-	if id.startswith('/'): return id
+	if os.path.isabs(id): return id
 	return iface_cache.stores.lookup(id)
 
 def execute_selections(selections, prog_args, dry_run = False, main = None, wrapper = None):

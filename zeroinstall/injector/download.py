@@ -109,8 +109,8 @@ class Download(object):
 		# Wait for child to exit, collecting error output as we go
 
 		while True:
-			#yield tasks.InputBlocker(self.child.stderr, "read data from " + self.url)
-			yield None
+			if os.name == "nt": yield None
+			else: yield tasks.InputBlocker(self.child.stderr, "read data from " + self.url)
 
 			data = os.read(self.child.stderr.fileno(), 100)
 			if not data:
@@ -214,7 +214,7 @@ if __name__ == '__main__':
 		from urllib2 import urlopen, Request, HTTPError, URLError
 		try:
 			#print "Child downloading", url
-			if url.startswith('/'):
+			if os.path.isabs(url):
 				if not os.path.isfile(url):
 					print >>sys.stderr, "File '%s' does not " \
 						"exist!" % url

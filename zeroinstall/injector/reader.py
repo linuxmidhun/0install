@@ -27,7 +27,7 @@ def update_from_cache(interface):
 	interface.reset()
 	main_feed = None
 
-	if interface.uri.startswith('/'):
+	if os.path.isabs(interface.uri):
 		debug(_("Loading local interface file '%s'"), interface.uri)
 		update(interface, interface.uri, local = True)
 		cached = True
@@ -87,7 +87,7 @@ def update_user_overrides(interface, main_feed = None):
 		if item.name == 'implementation':
 			id = item.getAttribute('id')
 			assert id is not None
-			if not (id.startswith('/') or id.startswith('.') or id.startswith('package:')):
+			if not (os.path.isabs(id) or id.startswith('.') or id.startswith('package:')):
 				assert '=' in id
 			impl = interface.implementations.get(id, None)
 			if not impl:
