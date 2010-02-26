@@ -15,7 +15,7 @@ well-known variables.
 
 from zeroinstall import _
 import os, re
-from logging import info, debug
+from logging import info, debug, warn
 from zeroinstall import SafeException, version
 from zeroinstall.injector.namespaces import XMLNS_IFACE
 
@@ -379,6 +379,8 @@ class Implementation(object):
 	@ivar id: a unique identifier for this Implementation
 	@ivar version: a parsed version number
 	@ivar released: release date
+	@ivar local_path: the directory containing this local implementation, or None if it isn't local (id isn't a path)
+	@type local_path: str | None
 	"""
 
 	# Note: user_stability shouldn't really be here
@@ -426,6 +428,8 @@ class Implementation(object):
 
 	os = None
 
+	local_path = None
+
 class DistributionImplementation(Implementation):
 	"""An implementation provided by the distribution. Information such as the version
 	comes from the package manager.
@@ -439,14 +443,19 @@ class DistributionImplementation(Implementation):
 	
 class ZeroInstallImplementation(Implementation):
 	"""An implementation where all the information comes from Zero Install.
+	@ivar digests: a list of "algorith=value" strings (since 0.45)
+	@type digests: [str]
 	@since: 0.28"""
-	__slots__ = ['os', 'size']
+	__slots__ = ['os', 'size', 'digests', 'local_path']
 
-	def __init__(self, feed, id):
+	def __init__(self, feed, id, local_path):
 		"""id can be a local path (string starting with /) or a manifest hash (eg "sha1=XXX")"""
+		assert not id.startswith('package:'), id
 		Implementation.__init__(self, feed, id)
 		self.size = None
 		self.os = None
+		self.digests = []
+		self.local_path = local_path
 
 	# Deprecated
 	dependencies = property(lambda self: dict([(x.interface, x) for x in self.requires
@@ -481,11 +490,11 @@ class Interface(object):
 
 	def __init__(self, uri):
 		assert uri
-		if uri.startswith('http:') or os.path.isabs(uri):
+		if uri.startswith('http:') or uri.startswith('https:') or uri.startswith('/'):
 			self.uri = uri
 		else:
 			raise SafeException(_("Interface name '%s' doesn't start "
-					    "with 'http:'") % uri)
+					    "with 'http:' or 'https:'") % uri)
 		self.reset()
 
 	def _get_feed_for(self):
@@ -625,7 +634,7 @@ class ZeroInstallFeed(object):
 				feed_src = x.getAttribute('src')
 				if not feed_src:
 					raise InvalidInterface(_('Missing "src" attribute in <feed>'))
-				if feed_src.startswith('http:') or local_path:
+				if feed_src.startswith('http:') or feed_src.startswith('https:') or local_path:
 					self.feeds.append(Feed(feed_src, x.getAttribute('arch'), False, langs = x.getAttribute('langs')))
 				else:
 					raise InvalidInterface(_("Invalid feed URL '%s'") % feed_src)
@@ -636,6 +645,8 @@ class ZeroInstallFeed(object):
 			raise InvalidInterface(_("Missing <name> in feed"))
 		if not self.summary:
 			raise InvalidInterface(_("Missing <summary> in feed"))
+
+		package_impls = [0, []]		# Best score so far and packages with that score
 
 		def process_group(group, group_attrs, base_depends, base_bindings):
 			for item in group.childNodes:
@@ -668,7 +679,14 @@ class ZeroInstallFeed(object):
 				elif item.name == 'implementation':
 					process_impl(item, item_attrs, depends, bindings)
 				elif item.name == 'package-implementation':
-					process_native_impl(item, item_attrs, depends)
+					distro_names = item_attrs.get('distributions', '')
+					for distro_name in distro_names.split(' '):
+						score = distro.get_score(distro_name)
+						if score > package_impls[0]:
+							package_impls[0] = score
+							package_impls[1] = []
+						if score == package_impls[0]:
+							package_impls[1].append((item, item_attrs, depends))
 				else:
 					assert 0
 
@@ -676,17 +694,21 @@ class ZeroInstallFeed(object):
 			id = item.getAttribute('id')
 			if id is None:
 				raise InvalidInterface(_("Missing 'id' attribute on %s") % item)
-			if local_dir and (os.path.isabs(id) or id.startswith('.')):
-				impl = self._get_impl(os.path.abspath(os.path.join(local_dir, id)))
+			local_path = item_attrs.get('local-path')
+			if local_dir and local_path:
+				impl = ZeroInstallImplementation(self, id, local_path)
+			elif local_dir and (id.startswith('/') or id.startswith('.')):
+				# For old feeds
+				id = os.path.abspath(os.path.join(local_dir, id))
+				impl = ZeroInstallImplementation(self, id, id)
 			else:
-				if '=' not in id:
-					raise InvalidInterface(_('Invalid "id"; form is "alg=value" (got "%s")') % id)
-				alg, sha1 = id.split('=')
-				try:
-					long(sha1, 16)
-				except Exception, ex:
-					raise InvalidInterface(_('Bad SHA1 attribute: %s') % ex)
-				impl = self._get_impl(id)
+				impl = ZeroInstallImplementation(self, id, None)
+				if '=' in id:
+					# In older feeds, the ID was the (single) digest
+					impl.digests.append(id)
+			if id in self.implementations:
+				warn(_("Duplicate ID '%s' in feed '%s'"), id, self)
+			self.implementations[id] = impl
 
 			impl.metadata = item_attrs
 			try:
@@ -739,6 +761,10 @@ class ZeroInstallFeed(object):
 							extract = elem.getAttribute('extract'),
 							start_offset = _get_long(elem, 'start-offset'),
 							type = elem.getAttribute('type'))
+				elif elem.name == 'manifest-digest':
+					for aname, avalue in elem.attrs.iteritems():
+						if ' ' not in aname:
+							impl.digests.append('%s=%s' % (aname, avalue))
 				elif elem.name == 'recipe':
 					recipe = Recipe()
 					for recipe_step in elem.childNodes:
@@ -766,7 +792,10 @@ class ZeroInstallFeed(object):
 
 			def factory(id):
 				assert id.startswith('package:')
-				impl = self._get_impl(id)
+				if id in self.implementations:
+					warn(_("Duplicate ID '%s' for DistributionImplementation"), id)
+				impl = DistributionImplementation(self, id)
+				self.implementations[id] = impl
 
 				impl.metadata = item_attrs
 
@@ -787,20 +816,29 @@ class ZeroInstallFeed(object):
 			root_attrs['main'] = main
 		process_group(feed_element, root_attrs, [], [])
 
+		for args in package_impls[1]:
+			process_native_impl(*args)
+
 	def get_name(self):
 		return self.name or '(' + os.path.basename(self.url) + ')'
 	
 	def __repr__(self):
 		return _("<Feed %s>") % self.url
 	
+	"""@deprecated"""
 	def _get_impl(self, id):
-		if id not in self.implementations:
-			if id.startswith('package:'):
-				impl = DistributionImplementation(self, id)
-			else:
-				impl = ZeroInstallImplementation(self, id)
-			self.implementations[id] = impl
-		return self.implementations[id]
+		assert id not in self.implementations
+
+		if id.startswith('.') or id.startswith('/'):
+			id = os.path.abspath(os.path.join(self.url, id))
+			local_path = id
+			impl = ZeroInstallImplementation(self, id, local_path)
+		else:
+			impl = ZeroInstallImplementation(self, id, None)
+			impl.digests.append(id)
+
+		self.implementations[id] = impl
+		return impl
 	
 	def set_stability_policy(self, new):
 		assert new is None or isinstance(new, Stability)
@@ -865,8 +903,8 @@ def canonical_iface_uri(uri):
 	@rtype: str
 	@raise SafeException: if uri isn't valid
 	"""
-	if uri.startswith('http://'):
-		if uri.find("/", 7) == -1:
+	if uri.startswith('http://') or uri.startswith('https://'):
+		if uri.count("/") < 3:
 			raise SafeException(_("Missing / after hostname in URI '%s'") % uri)
 		return uri
 	elif uri.startswith('file:///'):

@@ -11,7 +11,7 @@ from optparse import OptionParser
 import logging
 
 from zeroinstall import SafeException, NeedDownload
-from zeroinstall.injector import model, autopolicy, namespaces, selections
+from zeroinstall.injector import model, autopolicy, selections
 from zeroinstall.injector.iface_cache import iface_cache
 
 #def program_log(msg): os.access('MARK: 0launch: ' + msg, os.F_OK)
@@ -80,7 +80,7 @@ def _manage_feeds(options, args):
 	handler = Handler(dry_run = options.dry_run)
 	if not args: raise UsageError()
 	for x in args:
-		print _("Feed '%s':\n") % x
+		print _("Feed '%s':") % x + '\n'
 		x = model.canonical_iface_uri(x)
 		policy = Policy(x, handler)
 		if options.offline:
@@ -132,21 +132,27 @@ def _manage_feeds(options, args):
 			print _("(no feeds)")
 
 def _normal_mode(options, args):
+	from zeroinstall.injector import handler
+
 	if len(args) < 1:
-		# You can use -g on its own to edit the GUI's own policy
-		# Otherwise, failing to give an interface is an error
 		if options.gui:
-			args = [namespaces.injector_gui_uri]
-			options.download_only = True
+			from zeroinstall import helpers
+			return helpers.get_selections_gui(None, [])
 		else:
 			raise UsageError()
 
 	iface_uri = model.canonical_iface_uri(args[0])
 	root_iface = iface_cache.get_interface(iface_uri)
 
+	if os.isatty(1):
+		h = handler.ConsoleHandler()
+	else:
+		h = handler.Handler()
+	h.dry_run = bool(options.dry_run)
+
 	policy = autopolicy.AutoPolicy(iface_uri,
+				handler = h,
 				download_only = bool(options.download_only),
-				dry_run = options.dry_run,
 				src = options.source)
 
 	if options.before or options.not_before:

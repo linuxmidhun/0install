@@ -19,11 +19,6 @@ import compile
 
 _dialogs = {}	# Interface -> Properties
 
-tips = gtk.Tooltips()
-
-# Response codes
-COMPILE = 2
-
 def enumerate(items):
 	x = 0
 	for i in items:
@@ -143,7 +138,7 @@ class Description:
 					name = _('<unknown>')
 					details = sig.get_details()
 					for item in details:
-						if item[0] in ('pub', 'uid') and len(item) > 9:
+						if item[0] == 'uid' and len(item) > 9:
 							name = item[9]
 							break
 					buffer.insert_with_tags(iter, _('Valid signature by "%(name)s"\n- Dated: %(sig_date)s\n- Fingerprint: %(sig_fingerprint)s\n') %

@@ -37,12 +37,11 @@ def execute(policy, prog_args, dry_run = False, main = None, wrapper = None):
 	@type wrapper: str
 	@precondition: C{policy.ready and policy.get_uncached_implementations() == []}
 	"""
-	iface = iface_cache.get_interface(policy.root)
 		
-	for impl in policy.implementation.values():
+	for iface, impl in policy.implementation.iteritems():
 		assert impl
 		_do_bindings(impl, impl.bindings)
-		for dep in impl.requires:
+		for dep in policy.solver.requires[iface]:
 			dep_iface = iface_cache.get_interface(dep.interface)
 			dep_impl = policy.get_implementation(dep_iface)
 			if isinstance(dep_impl, ZeroInstallImplementation):
@@ -50,17 +49,17 @@ def execute(policy, prog_args, dry_run = False, main = None, wrapper = None):
 			else:
 				debug(_("Implementation %s is native; no bindings needed"), dep_impl)
 
-	root_impl = policy.get_implementation(iface)
+	root_iface = iface_cache.get_interface(policy.root)
+	root_impl = policy.get_implementation(root_iface)
 	_execute(root_impl, prog_args, dry_run, main, wrapper)
 
 def _do_bindings(impl, bindings):
 	for b in bindings:
 		if isinstance(b, EnvironmentBinding):
-			do_env_binding(b, _get_implementation_path(impl.id))
+			do_env_binding(b, _get_implementation_path(impl))
 
-def _get_implementation_path(id):
-	if os.path.isabs(id): return id
-	return iface_cache.stores.lookup(id)
+def _get_implementation_path(impl):
+	return impl.local_path or iface_cache.stores.lookup_any(impl.digests)
 
 def execute_selections(selections, prog_args, dry_run = False, main = None, wrapper = None):
 	"""Execute program. On success, doesn't return. On failure, raises an Exception.
@@ -142,7 +141,7 @@ def _execute(root_impl, prog_args, dry_run, main, wrapper):
 		elif root_impl.main:
 			main = os.path.join(os.path.dirname(root_impl.main), main)
 		if main is not None:
-			prog_path = os.path.join(_get_implementation_path(root_impl.id), main)
+			prog_path = os.path.join(_get_implementation_path(root_impl), main)
 
 	if main is None:
 		raise SafeException(_("Implementation '%s' cannot be executed directly; it is just a library "

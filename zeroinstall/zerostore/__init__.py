@@ -190,7 +190,7 @@ class Store:
 			raise BadDigest(_('Incorrect manifest -- archive is corrupted.\n'
 					'Required digest: %(required_digest)s\n'
 					'Actual digest: %(actual_digest)s\n') %
-					{'request_digest': required_digest, 'actual_digest': actual_digest})
+					{'required_digest': required_digest, 'actual_digest': actual_digest})
 
 		if try_helper:
 			if self._add_with_helper(required_digest, extracted):
@@ -250,16 +250,21 @@ class Stores(object):
 				self.stores.append(Store(directory))
 
 	def lookup(self, digest):
+		return self.lookup_any([digest])
+
+	def lookup_any(self, digests):
 		"""Search for digest in all stores."""
-		assert digest
-		if '/' in digest or '=' not in digest:
-			raise BadDigest(_('Syntax error in digest (use ALG=VALUE, not %s)') % digest)
-		for store in self.stores:
-			path = store.lookup(digest)
-			if path:
-				return path
-		raise NotStored(_("Item with digest '%(digest)s' not found in stores. Searched:\n- %(stores)s") %
-			{'digest': digest, 'stores': '\n- '.join([s.dir for s in self.stores])})
+		assert digests
+		for digest in digests:
+			assert digest
+			if '/' in digest or '=' not in digest:
+				raise BadDigest(_('Syntax error in digest (use ALG=VALUE, not %s)') % digest)
+			for store in self.stores:
+				path = store.lookup(digest)
+				if path:
+					return path
+		raise NotStored(_("Item with digests '%(digests)s' not found in stores. Searched:\n- %(stores)s") %
+			{'digests': digests, 'stores': '\n- '.join([s.dir for s in self.stores])})
 
 	def add_dir_to_cache(self, required_digest, dir):
 		"""Add to the best writable cache.

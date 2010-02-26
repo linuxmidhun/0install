@@ -308,7 +308,7 @@ class CacheExplorer:
 		self._update_sizes()
 
 		if errors:
-			gtkutils.show_message_box(self, _("Failed to delete:\n%s") % '\n'.join(errors))
+			gtkutils.show_message_box(self.window, _("Failed to delete:\n%s") % '\n'.join(errors))
 
 	def show(self):
 		"""Display the window and scan the caches to populate it."""
@@ -362,7 +362,7 @@ class CacheExplorer:
 			else:
 				cached_iface = ValidInterface(iface, iface_size)
 				for impl in iface.implementations.values():
-					if os.path.isabs(impl.id) or impl.id.startswith('.'):
+					if impl.local_path:
 						cached_iface.in_cache.append(LocalImplementation(impl))
 					if impl.id in unowned:
 						cached_dir = unowned[impl.id].dir
@@ -462,5 +462,4 @@ section.""")),
 (_('Interfaces'), '\n' +
 _("""All remaining interfaces are listed in this section. You may wish to delete old versions of \
 certain programs. Deleting a program which you may later want to run will require it to be downloaded \
-again. Deleting a version of a program which is currently running may cause it to crash, so be careful!
-""")))
+again. Deleting a version of a program which is currently running may cause it to crash, so be careful!""")))

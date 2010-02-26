@@ -67,7 +67,8 @@ def type_from_url(url):
 	if url.endswith('.deb'): return 'application/x-deb'
 	if url.endswith('.tar.bz2'): return 'application/x-bzip-compressed-tar'
 	if url.endswith('.tar.gz'): return 'application/x-compressed-tar'
-	if url.endswith('.tar.lzma'): return 'application/x-lzma-compressed-tar'	# XXX: No registered MIME type!
+	if url.endswith('.tar.lzma'): return 'application/x-lzma-compressed-tar'
+	if url.endswith('.tar.xz'): return 'application/x-xz-compressed-tar'
 	if url.endswith('.tgz'): return 'application/x-compressed-tar'
 	if url.endswith('.tar'): return 'application/x-tar'
 	if url.endswith('.zip'): return 'application/zip'
@@ -89,10 +90,7 @@ def check_type_ok(mime_type):
 					"I need to extract it. Install the package containing it (sometimes called 'binutils') "
 					"first. This works even if you're on a non-Debian-based distribution such as Red Hat)."))
 	elif mime_type == 'application/x-bzip-compressed-tar':
-		if not find_in_path('bunzip2'):
-			raise SafeException(_("This package looks like a bzip2-compressed package, but you don't have the 'bunzip2' command "
-					"I need to extract it. Install the package containing it (it's probably called 'bzip2') "
-					"first."))
+		pass	# We'll fall back to Python's built-in tar.bz2 support
 	elif mime_type == 'application/zip':
 		pass
 	elif mime_type == 'application/vnd.ms-cab-compressed':
@@ -101,6 +99,11 @@ def check_type_ok(mime_type):
 					"I need to extract it. Install the package containing it first."))
 	elif mime_type == 'application/x-lzma-compressed-tar':
 		pass	# We can get it through Zero Install
+	elif mime_type == 'application/x-xz-compressed-tar':
+		if not find_in_path('unxz'):
+			raise SafeException(_("This package looks like a xz-compressed package, but you don't have the 'unxz' command "
+					"I need to extract it. Install the package containing it (it's probably called 'xz-utils') "
+					"first."))
 	elif mime_type in ('application/x-compressed-tar', 'application/x-tar'):
 		pass
 	else:
@@ -173,7 +176,8 @@ def unpack_archive_over(url, data, destdir, extract = None, type = None, start_o
 
 def unpack_archive(url, data, destdir, extract = None, type = None, start_offset = 0):
 	"""Unpack stream 'data' into directory 'destdir'. If extract is given, extract just
-	that sub-directory from the archive. Works out the format from the name."""
+	that sub-directory from the archive (i.e. destdir/extract will exist afterwards).
+	Works out the format from the name."""
 	if type is None: type = type_from_url(url)
 	if type is None: raise SafeException(_("Unknown extension (and no MIME type given) in '%s'") % url)
 	if type == 'application/x-bzip-compressed-tar':
@@ -188,6 +192,8 @@ def unpack_archive(url, data, destdir, extract = None, type = None, start_offset
 		extract_tar(data, destdir, extract, None, start_offset)
 	elif type == 'application/x-lzma-compressed-tar':
 		extract_tar(data, destdir, extract, 'lzma', start_offset)
+	elif type == 'application/x-xz-compressed-tar':
+		extract_tar(data, destdir, extract, 'xz', start_offset)
 	elif type == 'application/x-compressed-tar':
 		extract_tar(data, destdir, extract, 'gzip', start_offset)
 	elif type == 'application/vnd.ms-cab-compressed':
@@ -205,12 +211,32 @@ def extract_deb(stream, destdir, extract = None, start_offset = 0):
 	deb_copy = file(deb_copy_name, 'w')
 	shutil.copyfileobj(stream, deb_copy)
 	deb_copy.close()
-	_extract(stream, destdir, ('ar', 'x', 'archive.deb', 'data.tar.gz'))
+
+	data_tar = None
+	p = subprocess.Popen(('ar', 't', 'archive.deb'), stdout=subprocess.PIPE, cwd=destdir, universal_newlines=True)
+	o = p.communicate()[0]
+	for line in o.split('\n'):
+		if line == 'data.tar':
+			data_compression = None
+		elif line == 'data.tar.gz':
+			data_compression = 'gzip'
+		elif line == 'data.tar.bz2':
+			data_compression = 'bzip2'
+		elif line == 'data.tar.lzma':
+			data_compression = 'lzma'
+		else:
+			continue
+		data_tar = line
+		break
+	else:
+		raise SafeException(_("File is not a Debian package."))
+
+	_extract(stream, destdir, ('ar', 'x', 'archive.deb', data_tar))
 	os.unlink(deb_copy_name)
-	data_name = os.path.join(destdir, 'data.tar.gz')
+	data_name = os.path.join(destdir, data_tar)
 	data_stream = file(data_name)
 	os.unlink(data_name)
-	extract_tar(data_stream, destdir, None, 'gzip')
+	extract_tar(data_stream, destdir, None, data_compression)
 
 def extract_rpm(stream, destdir, extract = None, start_offset = 0):
 	if extract:
@@ -349,7 +375,7 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 		if not re.match('^[a-zA-Z0-9][- _a-zA-Z0-9.]*$', extract):
 			raise SafeException(_('Illegal character in extract attribute'))
 
-	assert decompress in [None, 'bzip2', 'gzip', 'lzma']
+	assert decompress in [None, 'bzip2', 'gzip', 'lzma', 'xz']
 
 	if _gnu_tar():
 		ext_cmd = ['tar']
@@ -363,6 +389,8 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 				if not unlzma:
 					unlzma = os.path.abspath(os.path.join(os.path.dirname(__file__), '_unlzma'))
 				ext_cmd.append('--use-compress-program=' + unlzma)
+			elif decompress == 'xz':
+				ext_cmd.append('--use-compress-program=unxz')
 
 		if recent_gnu_tar():
 			ext_cmd.extend(('-x', '--no-same-owner', '--no-same-permissions'))
@@ -375,7 +403,7 @@ def extract_tar(stream, destdir, extract, decompress, start_offset = 0):
 		_extract(stream, destdir, ext_cmd, start_offset)
 	else:
 		# Since we don't have GNU tar, use python's tarfile module. This will probably
-		# be a lot slower and we do not support lzma; however, it is portable.
+		# be a lot slower and we do not support lzma and xz; however, it is portable.
 		if decompress is None:
 			rmode = 'r|'
 		elif decompress == 'bzip2':

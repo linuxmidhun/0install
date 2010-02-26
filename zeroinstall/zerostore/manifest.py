@@ -40,6 +40,8 @@ except:
 class Algorithm:
 	"""Abstract base class for algorithms.
 	An algorithm knows how to generate a manifest from a directory tree.
+	@ivar rating: how much we like this algorithm (higher is better)
+	@type rating: int
 	"""
 	def generate_manifest(self, root):
 		"""Returns an iterator that yields each line of the manifest for the directory
@@ -57,6 +59,9 @@ class Algorithm:
 
 class OldSHA1(Algorithm):
 	"""@deprecated: Injector versions before 0.20 only supported this algorithm."""
+
+	rating = 10
+
 	def generate_manifest(self, root):
 		def recurse(sub):
 			# To ensure that a line-by-line comparison of the manifests
@@ -227,7 +232,7 @@ def verify(root, required_digest = None):
 	
 	error.detail = _(" Expected: %(required_digest)s\n"
 					 "   Actual: %(actual_digest)s\n"
-					 ".manifest digest: %s\n\n") \
+					 ".manifest digest: %(manifest_digest)s\n\n") \
 					 % {'required_digest': required_digest, 'actual_digest': actual_digest, 'manifest_digest': manifest_digest or _('No .manifest file')}
 
 	if manifest_digest is None:
@@ -257,7 +262,7 @@ def copy_tree_with_verify(source, target, manifest_data, required_digest):
 	The copy is first done to a temporary directory in target, then renamed to the final name
 	only if correct. Therefore, an invalid 'target/required_digest' will never exist.
 	A successful return means than target/required_digest now exists (whether we created it or not)."""
-	import tempfile, shutil
+	import tempfile
 	from logging import info
 
 	alg, digest_value = splitID(required_digest)
@@ -414,13 +419,14 @@ def _copy_files(alg, wanted, source, target):
 class HashLibAlgorithm(Algorithm):
 	new_digest = None		# Constructor for digest objects
 
-	def __init__(self, name):
+	def __init__(self, name, rating):
 		if name == 'sha1':
 			self.new_digest = sha1_new
 			self.name = 'sha1new'
 		else:
 			self.new_digest = getattr(hashlib, name)
 			self.name = name
+		self.rating = rating
 
 	def generate_manifest(self, root):
 		def recurse(sub):
@@ -494,11 +500,11 @@ class HashLibAlgorithm(Algorithm):
 
 algorithms = {
 	'sha1': OldSHA1(),
-	'sha1new': HashLibAlgorithm('sha1'),
+	'sha1new': HashLibAlgorithm('sha1', 50),
 }
 
 if hashlib is not None:
-	algorithms['sha256'] = HashLibAlgorithm('sha256')
+	algorithms['sha256'] = HashLibAlgorithm('sha256', 80)
 
 def fixup_permissions(root):
 	"""Set permissions recursively for children of root:

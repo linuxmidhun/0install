@@ -7,13 +7,18 @@ Integration with native distribution package managers.
 # See the README file for details, or visit http://0install.net.
 
 from zeroinstall import _
-import os, re
+import os, re, glob
 from logging import warn, info
 from zeroinstall.injector import namespaces, model
 from zeroinstall.support import basedir
 
-_dotted_ints = '[0-9]+(\.[0-9]+)*'
-_version_regexp = '(%s)(-(pre|rc|post|)%s)*' % (_dotted_ints, _dotted_ints)
+_dotted_ints = '[0-9]+(?:\.[0-9]+)*'
+
+# This matches a version number that would be a valid Zero Install version without modification
+_zeroinstall_regexp = '(?:%s)(?:-(?:pre|rc|post|)(?:%s))*' % (_dotted_ints, _dotted_ints)
+
+# This matches the interesting bits of distribution version numbers
+_version_regexp = '(%s)(-r%s)?' % (_zeroinstall_regexp, _dotted_ints)
 
 def try_cleanup_distro_version(version):
 	"""Try to turn a distribution version string into one readable by Zero Install.
@@ -22,7 +27,11 @@ def try_cleanup_distro_version(version):
 	@rtype: str"""
 	match = re.match(_version_regexp, version)
 	if match:
-		return match.group(0)
+		version, revision = match.groups()
+		if revision is None:
+			return version
+		else:
+			return '%s-%s' % (version, revision[2:])
 	return None
 
 class Distribution(object):
@@ -42,6 +51,18 @@ class Distribution(object):
 		@type factory: str -> L{model.DistributionImplementation}
 		"""
 		return
+
+	def get_score(self, distribution):
+		"""Indicate how closely the host distribution matches this one.
+		The <package-implementation> with the highest score is passed
+		to L{Distribution.get_package_info}. If several elements get
+		the same score, get_package_info is called for all of them.
+		@param distribution: a distribution name
+		@type distribution: str
+		@return: an integer, or None if there is no match at all
+		@rtype: int | None
+		"""
+		return 0
 
 class CachedDistribution(Distribution):
 	"""For distributions where querying the package database is slow (e.g. requires running
@@ -156,6 +177,9 @@ class DebianDistribution(CachedDistribution):
 		if machine != '*':
 			impl.machine = machine
 
+	def get_score(self, disto_name):
+		return int(disto_name == 'Debian')
+
 class RPMDistribution(CachedDistribution):
 	"""An RPM-based distribution."""
 
@@ -194,6 +218,46 @@ class RPMDistribution(CachedDistribution):
 			if machine != '*':
 				impl.machine = machine
 
+	def get_score(self, disto_name):
+		return int(disto_name == 'RPM')
+
+class GentooDistribution(Distribution):
+
+	def __init__(self, pkgdir):
+		self._pkgdir = pkgdir
+
+	def get_package_info(self, package, factory):
+		_version_start_reqexp = '-[0-9]'
+
+		if package.count('/') != 1: return
+
+		category, leafname = package.split('/')
+		category_dir = os.path.join(self._pkgdir, category)
+		match_prefix = leafname + '-'
+
+		if not os.path.isdir(category_dir): return
+
+		for filename in os.listdir(category_dir):
+			if filename.startswith(match_prefix) and filename[len(match_prefix)].isdigit():
+				name = file(os.path.join(category_dir, filename, 'PF')).readline().strip()
+
+				match = re.search(_version_start_reqexp, name)
+				if match is None:
+					warn(_('Cannot parse version from Gentoo package named "%(name)s"'), {'name': name})
+					continue
+				else:
+					version = try_cleanup_distro_version(name[match.start() + 1:])
+
+				machine = file(os.path.join(category_dir, filename, 'CHOST')).readline().split('-')[0]
+
+				impl = factory('package:gentoo:%s:%s:%s' % \
+						(package, version, machine))
+				impl.version = model.parse_version(version)
+
+	def get_score(self, disto_name):
+		return int(disto_name == 'Gentoo')
+
+
 _host_distribution = None
 def get_host_distribution():
 	"""Get a Distribution suitable for the host operating system.
@@ -203,8 +267,11 @@ def get_host_distribution():
 	if not _host_distribution:
 		_dpkg_db_status = '/var/lib/dpkg/status'
 		_rpm_db = '/var/lib/rpm/Packages'
+		_gentoo_db = '/var/db/pkg'
 
-		if os.access(_dpkg_db_status, os.R_OK):
+		if os.path.isdir(_gentoo_db):
+			_host_distribution = GentooDistribution(_gentoo_db)
+		elif os.access(_dpkg_db_status, os.R_OK):
 			_host_distribution = DebianDistribution(_dpkg_db_status)
 		elif os.path.isfile(_rpm_db):
 			_host_distribution = RPMDistribution(_rpm_db)

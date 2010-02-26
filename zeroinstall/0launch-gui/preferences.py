@@ -8,8 +8,6 @@ from zeroinstall.injector.model import network_levels
 from zeroinstall.injector import trust, gpg
 from freshness import freshness_levels, Freshness
 
-tips = gtk.Tooltips()
-
 SHOW_CACHE = 0
 
 class Preferences:
@@ -101,7 +99,7 @@ class KeyList:
 					if domain not in domains:
 						domains[domain] = set()
 					domains[domain].add(keys[fingerprint])
-			for domain in domains:
+			for domain in sorted(domains):
 				iter = self.trusted_keys.append(None, [domain, None])
 				for key in domains[domain]:
 					self.trusted_keys.append(iter, [key.name, key])
@@ -153,6 +151,7 @@ def show_preferences(policy):
 		preferences_box.destroy()
 	preferences_box = Preferences(policy)
 	preferences_box.window.show()
+	return preferences_box.window
 		
 gui_help = help_box.HelpBox(_("Zero Install Preferences Help"),
 (_('Overview'), '\n\n' +

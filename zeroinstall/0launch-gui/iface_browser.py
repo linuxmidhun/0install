@@ -357,15 +357,12 @@ class InterfaceBrowser:
 			if impl:
 				old_impl = self.original_implementation.get(iface, None)
 				version_str = impl.get_version()
-				if old_impl is not None and old_impl is not impl:
+				if old_impl is not None and old_impl.id != impl.id:
 					version_str += _(' (was %s)') % old_impl.get_version()
 				self.model[iter][InterfaceBrowser.VERSION] = version_str
 
 				self.model[iter][InterfaceBrowser.DOWNLOAD_SIZE] = utils.get_fetch_info(self.policy, impl)
-				if hasattr(impl, 'requires'):
-					children = impl.requires
-				else:
-					children = impl.dependencies
+				children = self.policy.solver.requires[iface]
 
 				for child in children:
 					if isinstance(child, model.InterfaceDependency):

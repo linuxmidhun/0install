@@ -10,6 +10,10 @@ This is the low-level interface for downloading interfaces, implementations, ico
 # See the README file for details, or visit http://0install.net.
 
 import tempfile, os, sys, subprocess
+
+if __name__ == '__main__':
+	sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
 from zeroinstall import SafeException
 from zeroinstall.support import tasks
 from logging import info, debug
@@ -164,7 +168,7 @@ class Download(object):
 							'Received: %(size)d bytes') % {'url': self.url, 'expected_size': self.expected_size, 'size': size})
 		except:
 			self.status = download_failed
-			_, ex, tb = sys.exc_info()
+			_unused, ex, tb = sys.exc_info()
 			self.downloaded.trigger(exception = (ex, tb))
 		else:
 			self.status = download_complete
@@ -214,13 +218,7 @@ if __name__ == '__main__':
 		from urllib2 import urlopen, Request, HTTPError, URLError
 		try:
 			#print "Child downloading", url
-			if os.path.isabs(url):
-				if not os.path.isfile(url):
-					print >>sys.stderr, "File '%s' does not " \
-						"exist!" % url
-					return
-				src = file(url)
-			elif url.startswith('http:') or url.startswith('https:') or url.startswith('ftp:'):
+			if url.startswith('http:') or url.startswith('https:') or url.startswith('ftp:'):
 				req = Request(url)
 				if url.startswith('http:') and if_modified_since:
 					req.add_header('If-Modified-Since', if_modified_since)

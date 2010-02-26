@@ -13,8 +13,6 @@ import dialog
 from zeroinstall.gtkui import gtkutils
 from zeroinstall.gtkui import help_box
 
-tips = gtk.Tooltips()
-
 SHOW_PREFERENCES = 0
 
 class MainWindow:
@@ -104,8 +102,10 @@ class MainWindow:
 				if cancelled.happened:
 					return
 
-			if self.policy.get_uncached_implementations():
-				dialog.alert(self.window, _('Not all downloads succeeded; cannot run program.'))
+			uncached = self.policy.get_uncached_implementations()
+			if uncached:
+				missing = '\n- '.join([_('%s %s') % (iface.get_name(), impl.get_version()) for iface, impl in uncached])
+				dialog.alert(self.window, _('Not all downloads succeeded; cannot run program.\n\nFailed to get:') + '\n- ' + missing)
 			else:
 				from zeroinstall.injector import selections
 				sels = selections.Selections(self.policy)
@@ -150,10 +150,10 @@ class MainWindow:
 			done += so_far
 
 		progress_text = '%s / %s' % (pretty_size(done), pretty_size(total))
-		if n_downloads == 1:
-			self.progress.set_text(_('Downloading one file (%s)') % progress_text)
-		else:
-			self.progress.set_text(_('Downloading %(number)d files (%(progress)s)') % {'number': n_downloads, 'progress': progress_text})
+		self.progress.set_text(
+			ngettext('Downloading one file (%(progress)s)',
+					 'Downloading %(number)d files (%(progress)s)', n_downloads)
+			% {'progress': progress_text, 'number': n_downloads})
 
 		if total == 0 or (n_downloads < 2 and not any_known):
 			self.progress.pulse()

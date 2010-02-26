@@ -8,7 +8,6 @@ from logging import getLogger, WARN, ERROR
 from contextlib import contextmanager
 
 sys.path.insert(0, '..')
-os.environ['PYTHONPATH'] = os.path.abspath('..')
 
 os.environ["http_proxy"] = "localhost:8000"
 
@@ -169,7 +168,7 @@ class TestDownload(BaseTest):
 			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B', 'HelloWorld.tgz')
 			sys.stdin = Reply("Y\n")
 			_download_missing_selections(Options(), sels)
-			path = iface_cache.iface_cache.stores.lookup(sels.selections['http://example.com:8000/Hello.xml'].id)
+			path = iface_cache.iface_cache.stores.lookup_any(sels.selections['http://example.com:8000/Hello.xml'].digests)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
 
 			assert sels.download_missing(iface_cache.iface_cache, None) is None
@@ -190,7 +189,7 @@ class TestDownload(BaseTest):
 			handler.wait_for_blocker(fetcher.download_and_import_feed('http://example.com:8000/Hello.xml', iface_cache.iface_cache))
 
 			_download_missing_selections(Options(), sels)
-			path = iface_cache.iface_cache.stores.lookup(sels.selections['http://example.com:8000/Hello.xml'].id)
+			path = iface_cache.iface_cache.stores.lookup_any(sels.selections['http://example.com:8000/Hello.xml'].digests)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
 
 			assert sels.download_missing(iface_cache.iface_cache, None) is None
@@ -209,6 +208,21 @@ class TestDownload(BaseTest):
 				if "HelloWorld/Missing" not in str(ex):
 					raise ex
 	
+	def testWrongSize(self):
+		with output_suppressed():
+			self.child = server.handle_requests('Hello-wrong-size', '6FCF121BE2390E0B.gpg',
+							'/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B', 'HelloWorld.tgz')
+			policy = autopolicy.AutoPolicy('http://localhost:8000/Hello-wrong-size', download_only = False,
+							handler = DummyHandler())
+			assert policy.need_download()
+			sys.stdin = Reply("Y\n")
+			try:
+				policy.download_and_execute(['Hello'], main = 'Missing')
+				assert 0
+			except model.SafeException, ex:
+				if "Downloaded archive has incorrect size" not in str(ex):
+					raise ex
+
 	def testRecipe(self):
 		old_out = sys.stdout
 		try:

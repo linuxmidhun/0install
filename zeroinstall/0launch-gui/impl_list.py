@@ -59,8 +59,8 @@ class ImplTips(TreeTips):
 
 	def get_tooltip_text(self):
 		impl = self.item
-		 if os.path.isabs(impl.id):
-			return _("Local: %s") % impl.id
+		if impl.local_path:
+			return _("Local: %s") % impl.local_path
 		if impl.id.startswith('package:'):
 			return _("Native package: %s") % impl.id.split(':', 1)[1]
 		if self.policy.get_cached(impl):

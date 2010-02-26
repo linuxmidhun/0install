@@ -16,7 +16,7 @@ import ConfigParser
 from zeroinstall import SafeException
 from zeroinstall.injector import arch
 from zeroinstall.injector.model import Interface, Implementation, network_levels, network_offline, DistributionImplementation, network_full
-from zeroinstall.injector.namespaces import config_site, config_prog, injector_gui_uri
+from zeroinstall.injector.namespaces import config_site, config_prog
 from zeroinstall.support import tasks, basedir
 from zeroinstall.injector.iface_cache import iface_cache
 
@@ -194,7 +194,7 @@ class Policy(object):
 		staleness = now - (feed.last_checked or 0)
 		debug(_("Staleness for %(feed)s is %(staleness).2f hours"), {'feed': feed, 'staleness': staleness / 3600.0})
 
-		if self.freshness == 0 or staleness < self.freshness:
+		if self.freshness <= 0 or staleness < self.freshness:
 			return False		# Fresh enough for us
 
 		last_check_attempt = iface_cache.get_last_check_attempt(feed.url)
@@ -212,10 +212,6 @@ class Policy(object):
 		else:
 			if self._warned_offline:
 				debug(_("Not downloading feed '%s' because we are off-line."), feed_url)
-			elif feed_url == injector_gui_uri:
-				# Don't print a warning, because we always switch to off-line mode to
-				# run the GUI the first time.
-				info(_("Not downloading GUI feed '%s' because we are in off-line mode."), feed_url)
 			else:
 				warn(_("Not downloading feed '%s' because we are in off-line mode."), feed_url)
 				self._warned_offline = True
@@ -225,9 +221,7 @@ class Policy(object):
 		@rtype: str
 		@raise zeroinstall.zerostore.NotStored: if it needs to be added to the cache first."""
 		assert isinstance(impl, Implementation)
-		if os.path.isabs(impl.id):
-			return impl.id
-		return iface_cache.stores.lookup(impl.id)
+		return impl.local_path or iface_cache.stores.lookup_any(impl.digests)
 
 	def get_implementation(self, interface):
 		"""Get the chosen implementation.
@@ -261,8 +255,8 @@ class Policy(object):
 		"""
 		if isinstance(impl, DistributionImplementation):
 			return impl.installed
-		if os.path.isabs(impl.id):
-			return os.path.exists(impl.id)
+		if impl.local_path:
+			return os.path.exists(impl.local_path)
 		else:
 			try:
 				path = self.get_implementation_path(impl)
