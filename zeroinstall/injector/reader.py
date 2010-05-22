@@ -24,7 +24,8 @@ def update_from_cache(interface):
 	always considered to be cached, although they are not actually stored in the cache.
 	@rtype: bool"""
 	interface.reset()
-	main_feed = load_feed_from_cache(interface.uri)
+	from zeroinstall.injector.iface_cache import iface_cache
+	main_feed = iface_cache.get_feed(interface.uri, force = True)
 	if main_feed is not None:
 		interface._main_feed = main_feed
 
@@ -113,9 +114,15 @@ def check_readable(interface_uri, source):
 	@rtype: int
 	@raise InvalidInterface: If the source's syntax is incorrect,
 	"""
-	tmp = Interface(interface_uri)
 	try:
-		update(tmp, source)
+		feed = load_feed(source, local = False)
+
+		if feed.url != interface_uri:
+			raise InvalidInterface(_("Incorrect URL used for feed.\n\n"
+						"%(feed_url)s is given in the feed, but\n"
+						"%(interface_uri)s was requested") %
+						{'feed_url': feed.url, 'interface_uri': interface_uri})
+		return feed.last_modified
 	except InvalidInterface, ex:
 		info(_("Error loading feed:\n"
 			"Interface URI: %(uri)s\n"
@@ -123,10 +130,10 @@ def check_readable(interface_uri, source):
 			"%(exception)s") %
 			{'uri': interface_uri, 'source': source, 'exception': ex})
 		raise InvalidInterface(_("Error loading feed '%(uri)s':\n\n%(exception)s") % {'uri': interface_uri, 'exception': ex})
-	return tmp.last_modified
 
 def update(interface, source, local = False):
 	"""Read in information about an interface.
+	Deprecated.
 	@param interface: the interface object to update
 	@type interface: L{model.Interface}
 	@param source: the name of the file to read
@@ -145,6 +152,10 @@ def update(interface, source, local = False):
 						"%(feed_url)s is given in the feed, but\n"
 						"%(interface_uri)s was requested") %
 						{'feed_url': feed.url, 'interface_uri': interface.uri})
+
+	# Hack.
+	from zeroinstall.injector.iface_cache import iface_cache
+	iface_cache._feeds[unicode(interface.uri)] = feed
 
 	interface._main_feed = feed
 	return feed

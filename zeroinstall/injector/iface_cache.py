@@ -177,10 +177,11 @@ class IfaceCache(object):
 	@see: L{iface_cache} - the singleton IfaceCache instance.
 	"""
 
-	__slots__ = ['_interfaces', 'stores']
+	__slots__ = ['_interfaces', 'stores', '_feeds']
 
 	def __init__(self):
 		self._interfaces = {}
+		self._feeds = {}
 
 		self.stores = zerostore.Stores()
 	
@@ -292,17 +293,19 @@ class IfaceCache(object):
 
 		reader.update_from_cache(interface)
 
-	def get_feed(self, url):
+	def get_feed(self, url, force = False):
 		"""Get a feed from the cache.
 		@param url: the URL of the feed
+		@param force: load the file from disk again
 		@return: the feed, or None if it isn't cached
 		@rtype: L{model.ZeroInstallFeed}"""
-		# TODO: This isn't a good implementation
-		iface = self.get_interface(url)
-		feed = iface._main_feed
-		if not isinstance(feed, model.DummyFeed):
-			return feed
-		return None
+		if not force:
+			feed = self._feeds.get(url, False)
+			if feed != False:
+				return feed
+
+		feed = self._feeds[url] = reader.load_feed_from_cache(url)
+		return feed
 
 	def get_interface(self, uri):
 		"""Get the interface for uri, creating a new one if required.
