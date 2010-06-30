@@ -38,10 +38,10 @@ else:
 			del home_owner
 
 if os.name == "nt":
-	from win32com.shell import shell, shellcon
-	appData = shell.SHGetFolderPath(0, shellcon.CSIDL_APPDATA, 0, 0)
-	localAppData = shell.SHGetFolderPath(0, shellcon.CSIDL_LOCAL_APPDATA, 0, 0)
-	commonAppData = shell.SHGetFolderPath(0, shellcon.CSIDL_COMMON_APPDATA, 0, 0)
+	from System import Environment
+	appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+	localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+	commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
 
 	xdg_data_home = appData
 	xdg_data_dirs = [xdg_data_home, commonAppData]

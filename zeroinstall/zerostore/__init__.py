@@ -232,9 +232,9 @@ class Stores(object):
 			dirs = file(impl_dirs)
 		else:
 			if os.name == "nt":
-				from win32com.shell import shell, shellcon
-				localAppData = shell.SHGetFolderPath(0, shellcon.CSIDL_LOCAL_APPDATA, 0, 0)
-				commonAppData = shell.SHGetFolderPath(0, shellcon.CSIDL_COMMON_APPDATA, 0, 0)
+				from System import Environment
+				localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+				commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
 
 				userCache = os.path.join(localAppData, "0install.net", "implementations")
 				sharedCache = os.path.join(commonAppData, "0install.net", "implementations")
