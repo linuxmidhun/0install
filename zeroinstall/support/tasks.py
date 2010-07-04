@@ -40,7 +40,10 @@ callbacks. See the Task class (below) for more information.
 from zeroinstall import _
 import sys
 from logging import info, warn
-import gobject
+
+import clr
+clr.AddReference('System.Windows.Forms')
+from System.Windows import Forms
 
 # The list of Blockers whose event has happened, in the order they were
 # triggered
@@ -160,9 +163,14 @@ class TimeoutBlocker(Blocker):
 	def __init__(self, timeout, name):
 		"""Trigger after 'timeout' seconds (may be a fraction)."""
 		Blocker.__init__(self, name)
-		gobject.timeout_add(long(timeout * 1000), self._timeout)
+		self._timer = Forms.Timer()
+		self._timer.Tick += self._timeout
+		self._timer.Interval = long(timeout * 1000)
+		self._timer.Start()
 	
-	def _timeout(self):
+	def _timeout(self, sender__unused, event__unused):
+		self._timer.Stop()
+		self._timer = None
 		self.trigger()
 
 def _io_callback(src, cond, blocker):
@@ -180,7 +188,7 @@ class InputBlocker(Blocker):
 	def add_task(self, task):
 		Blocker.add_task(self, task)
 		if self._tag is None:
-			self._tag = gobject.io_add_watch(self._stream, gobject.IO_IN | gobject.IO_HUP,
+			self._tag = gobject.IO.AddWatch(self._stream, gobject.IO_IN | gobject.IO_HUP,
 				_io_callback, self)
 	
 	def remove_task(self, task):
@@ -200,7 +208,7 @@ class OutputBlocker(Blocker):
 	def add_task(self, task):
 		Blocker.add_task(self, task)
 		if self._tag is None:
-			self._tag = gobject.io_add_watch(self._stream, gobject.IO_OUT | gobject.IO_HUP,
+			self._tag = gobject.IO.AddWatch(self._stream, gobject.IO_OUT | gobject.IO_HUP,
 				_io_callback, self)
 	
 	def remove_task(self, task):
@@ -296,9 +304,9 @@ class Task:
 # Must append to _run_queue right after calling this!
 def _schedule():
 	assert not _run_queue
-	gobject.idle_add(_handle_run_queue)
+	Forms.Application.Idle += _handle_run_queue
 
-def _handle_run_queue():
+def _handle_run_queue(sender__unused, event__unused):
 	global _idle_blocker
 	assert _run_queue
 
@@ -324,9 +332,8 @@ def _handle_run_queue():
 	
 	del _run_queue[0]
 
-	if _run_queue:
-		return True
-	return False
+	if not _run_queue:
+		Forms.Application.Idle -= _handle_run_queue
 
 def named_async(name):
 	"""Decorator that turns a generator function into a function that runs the

@@ -83,18 +83,21 @@ class Handler(object):
 		@param blocker: event to wait on
 		@type blocker: L{tasks.Blocker}"""
 		if not blocker.happened:
-			import gobject
+			import clr
+			clr.AddReference('System.Windows.Forms')
+			from System.Windows.Forms import Application, ApplicationContext
 
 			def quitter():
 				yield blocker
-				self._loop.quit()
+				self._loop.ExitThread()
 			quit = tasks.Task(quitter(), "quitter")
 
 			assert self._loop is None	# Avoid recursion
-			self._loop = gobject.MainLoop(gobject.main_context_default())
+			self._loop = ApplicationContext()
+
 			try:
 				debug(_("Entering mainloop, waiting for %s"), blocker)
-				self._loop.run()
+				Application.Run(self._loop)
 			finally:
 				self._loop = None
 
