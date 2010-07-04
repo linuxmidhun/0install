@@ -590,24 +590,6 @@ def get_host_distribution():
 	@rtype: L{Distribution}"""
 	global _host_distribution
 	if not _host_distribution:
-		dpkg_db_status = '/var/lib/dpkg/status'
-		pkgcache = '/var/cache/apt/pkgcache.bin'
-		_rpm_db = '/var/lib/rpm/Packages'
-		_slack_db = '/var/log/packages'
-		_pkg_db = '/var/db/pkg'
-
-		if os.path.isdir(_pkg_db):
-			if sys.platform.startswith("linux"):
-				_host_distribution = GentooDistribution(_pkg_db)
-			elif sys.platform.startswith("freebsd"):
-				_host_distribution = PortsDistribution(_pkg_db)
-		elif os.access(dpkg_db_status, os.R_OK):
-			_host_distribution = DebianDistribution(dpkg_db_status, pkgcache)
-		elif os.path.isfile(_rpm_db):
-			_host_distribution = RPMDistribution(_rpm_db)
-		elif os.path.isdir(_slack_db):
-			_host_distribution = SlackDistribution(_slack_db)
-		else:
-			_host_distribution = Distribution()
+		_host_distribution = Distribution()
 
 	return _host_distribution

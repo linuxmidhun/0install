@@ -113,7 +113,7 @@ class Download(object):
 		# Wait for child to exit, collecting error output as we go
 
 		while True:
-			yield tasks.InputBlocker(self.child.stderr, "read data from " + self.url)
+			yield None # XXX: tasks.InputBlocker(self.child.stderr, "read data from " + self.url)
 
 			data = os.read(self.child.stderr.fileno(), 100)
 			if not data:
@@ -204,7 +204,7 @@ class Download(object):
 		if self.status is download_starting:
 			return 0
 		elif self.status is download_fetching:
-			return os.fstat(self.tempfile.fileno()).st_size
+			return 0 #XXX os.fstat(self.tempfile.fileno()).st_size
 		else:
 			return self._final_total_size
 	

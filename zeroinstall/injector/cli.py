@@ -151,7 +151,7 @@ def _normal_mode(options, args):
 	iface_uri = model.canonical_iface_uri(args[0])
 	root_iface = iface_cache.get_interface(iface_uri)
 
-	if os.isatty(1):
+	if False and os.isatty(1):
 		h = handler.ConsoleHandler()
 	else:
 		h = handler.Handler()
