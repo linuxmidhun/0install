@@ -14,6 +14,7 @@ from zeroinstall.gtkui import gtkutils
 from zeroinstall.gtkui import help_box
 
 SHOW_PREFERENCES = 0
+ADVANCED = 1
 
 class MainWindow:
 	progress = None
@@ -34,6 +35,26 @@ class MainWindow:
 
 		self.window = widgets.get_widget('main')
 		self.window.set_default_size(gtk.gdk.screen_width() * 2 / 5, 300)
+
+		self.simple_status = widgets.get_widget('simple_status')
+
+		def set_simple_mode(simple):
+			# Simple mode
+			def set_visible(widget, simple_only):
+				if simple_only == simple:
+					widget.show()
+				else:
+					widget.hide()
+			set_visible(self.simple_status, True)
+			set_visible(widgets.get_widget("advanced"), True)
+			set_visible(widgets.get_widget("scrolledwindow1"), False)
+			set_visible(widgets.get_widget("refresh"), False)
+			set_visible(widgets.get_widget("preferences"), False)
+			set_visible(widgets.get_widget("helpbutton1"), False)
+
+		set_simple_mode(True)
+		advanced = widgets.get_widget("advanced")
+		self.window.action_area.set_child_secondary(advanced, True)
 
 		self.progress = widgets.get_widget('progress')
 		self.progress_area = widgets.get_widget('progress_area')
@@ -76,6 +97,8 @@ class MainWindow:
 					self.download_and_run(run_button, self.cancel_download_and_run)
 			elif resp == gtk.RESPONSE_HELP:
 				gui_help.display()
+			elif resp == ADVANCED:
+				set_simple_mode(False)
 			elif resp == SHOW_PREFERENCES:
 				import preferences
 				preferences.show_preferences(policy)
@@ -95,12 +118,15 @@ class MainWindow:
 	def download_and_run(self, run_button, cancelled):
 		try:
 			if not self.select_only:
+				self.set_status("Downloading software...")
+
 				downloaded = self.policy.download_uncached_implementations()
 
 				if downloaded:
 					# We need to wait until everything is downloaded...
 					blockers = [downloaded, cancelled]
 					yield blockers
+					self.set_status("Ready to download")
 					tasks.check(blockers)
 
 					if cancelled.happened:
@@ -111,6 +137,7 @@ class MainWindow:
 				uncached = None		# (we don't care)
 
 			if uncached:
+				self.set_status("Ready to download")
 				missing = '\n- '.join([_('%(iface_name)s %(impl_version)s') % {'iface_name': iface.get_name(), 'impl_version': impl.get_version()} for iface, impl in uncached])
 				dialog.alert(self.window, _('Not all downloads succeeded; cannot run program.\n\nFailed to get:') + '\n- ' + missing)
 			else:
@@ -124,11 +151,16 @@ class MainWindow:
 		except SystemExit:
 			raise
 		except download.DownloadAborted, ex:
+			self.set_status("Download aborted")
 			run_button.set_active(False)
 			# Don't bother reporting this to the user
 		except Exception, ex:
+			window.set_status("Download error")
 			run_button.set_active(False)
 			self.report_exception(ex)
+	
+	def set_status(self, status):
+		self.simple_status.set_text(status)
 
 	def update_download_status(self):
 		"""Called at regular intervals while there are downloads in progress,

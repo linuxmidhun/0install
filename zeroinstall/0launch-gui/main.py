@@ -145,6 +145,7 @@ def run_gui(args):
 	def main():
 		force_refresh = bool(options.refresh)
 		while True:
+			window.set_status("Fetching information about the software...")
 			window.refresh_button.set_sensitive(False)
 			window.browser.set_update_icons(force_refresh)
 
@@ -156,8 +157,13 @@ def run_gui(args):
 			try:
 				window.refresh_button.set_sensitive(True)
 				tasks.check(solved)
+				if policy.ready:
+					window.set_status("Ready to download")
+				else:
+					window.set_status("Failed to select versions")
 			except Exception, ex:
 				window.report_exception(ex)
+				window.set_status("Error: " + unicode(ex))
 
 			if window.systray_icon and window.systray_icon.get_visible() and \
 			   window.systray_icon.is_embedded():
