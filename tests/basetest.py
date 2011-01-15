@@ -83,7 +83,7 @@ class TestFetcher:
 
 class TestConfig:
 	freshness = 0
-	help_test_new_versions = False
+	help_with_testing = False
 	network_use = model.network_full
 
 	def __init__(self):

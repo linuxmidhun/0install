@@ -116,13 +116,11 @@ class Policy(object):
 	@ivar network_use: one of the model.network_* values
 	@ivar freshness: seconds allowed since last update
 	@type freshness: int
-	@ivar src: whether we are looking for source code
-	@type src: bool
 	@ivar stale_feeds: set of feeds which are present but haven't been checked for a long time
 	@type stale_feeds: set
 	"""
 	__slots__ = ['root', 'watchers', 'requirements', 'config', '_warned_offline',
-		     'command', 'target_arch', 'src',
+		     'command', 'target_arch',
 		     'stale_feeds', 'solver']
 
 	help_with_testing = property(lambda self: self.config.help_with_testing,
@@ -140,15 +138,11 @@ class Policy(object):
 
 	def __init__(self, root = None, handler = None, src = None, command = -1, config = None, requirements = None):
 		"""
-		@param root: The URI of the root interface (the program we want to run).
-		@param handler: A handler for main-loop integration.
-		@type handler: L{zeroinstall.injector.handler.Handler}
-		@param src: Whether we are looking for source code.
-		@type src: bool
-		@param command: The name of the command to run (e.g. 'run', 'test', 'compile', etc)
-		@type command: str
+		@param requirements: Details about the program we want to run
+		@type requirements: L{requirements.Requirements}
 		@param config: The configuration settings to use, or None to load from disk.
 		@type config: L{ConfigParser.ConfigParser}
+		Note: all other arguments are deprecated (since 0launch 0.52)
 		"""
 		self.watchers = []
 		if requirements is None:

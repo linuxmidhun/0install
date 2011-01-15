@@ -6,7 +6,6 @@ import unittest
 sys.path.insert(0, '..')
 
 from zeroinstall.injector import model, gpg, reader
-from zeroinstall.injector.iface_cache import iface_cache
 import data
 
 foo_iface_uri = 'http://foo'
@@ -74,7 +73,7 @@ class TestReader(BaseTest):
 		tmp.flush()
 		iface = model.Interface(foo_iface_uri)
 		reader.update(iface, tmp.name)
-		feed = iface_cache.get_feed(foo_iface_uri)
+		feed = self.config.iface_cache.get_feed(foo_iface_uri)
 
 		impl = feed.implementations['sha1=123']
 		assert len(impl.dependencies) == 2
@@ -115,7 +114,7 @@ class TestReader(BaseTest):
 		iface = model.Interface(foo_iface_uri)
 		reader.update(iface, tmp.name, local = True)
 
-		feed = iface_cache.get_feed(foo_iface_uri)
+		feed = self.config.iface_cache.get_feed(foo_iface_uri)
 
 		impl = feed.implementations['sha1=123']
 
@@ -152,11 +151,12 @@ class TestReader(BaseTest):
 		tmp.flush()
 		iface = model.Interface(foo_iface_uri)
 		reader.update(iface, tmp.name)
-		feed = iface_cache.get_feed(foo_iface_uri)
+		feed = self.config.iface_cache.get_feed(foo_iface_uri)
 		impl = feed.implementations['sha1=123']
 		assert impl.version == [[1, 0], -1, [3], -2]
 	
 	def testAttrs(self):
+		iface_cache = self.config.iface_cache
 		tmp = tempfile.NamedTemporaryFile(prefix = 'test-')
 		tmp.write(
 """<?xml version="1.0" ?>
@@ -187,6 +187,7 @@ class TestReader(BaseTest):
 		assert feed.implementations['sha1=124'].metadata['main'] == 'next'
 	
 	def testNative(self):
+		iface_cache = self.config.iface_cache
 		tmp = tempfile.NamedTemporaryFile(prefix = 'test-')
 		tmp.write(
 """<?xml version="1.0" ?>

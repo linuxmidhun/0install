@@ -358,7 +358,7 @@ class SATSolver(Solver):
 							impls.extend(distro_feed.implementations.values())
 				except Exception, ex:
 					warn(_("Failed to load feed %(feed)s for %(interface)s: %(exception)s"), {'feed': f, 'interface': iface, 'exception': ex})
-					raise
+					#raise
 
 			impls.sort(lambda a, b: self.compare(iface, a, b, arch))
 

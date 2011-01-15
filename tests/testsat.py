@@ -132,12 +132,13 @@ def assertSelection(expected, repo):
 
 	root = uri_prefix + expected[0][0]
 
-	test_config = ConfigParser.RawConfigParser()
-	test_config.add_section('global')
-	test_config.set('global', 'help_with_testing', 'False')
-	test_config.set('global', 'network_use', model.network_offline)
+	class TestConfig:
+		help_with_testing = False
+		network_use = model.network_offline
+		stores = stores
+		iface_cache = cache
 
-	s = Solver(test_config, cache, stores)
+	s = Solver(TestConfig())
 	s.solve(root, arch.get_architecture('Linux', 'x86_64'))
 
 	if expected[0][1] == 'FAIL':
