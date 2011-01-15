@@ -11,7 +11,7 @@ import logging
 
 from zeroinstall import cmd, SafeException, _
 from zeroinstall.cmd import UsageError
-from zeroinstall.injector import model, selections, handler
+from zeroinstall.injector import model, selections, handler, requirements
 from zeroinstall.injector.policy import Policy
 
 syntax = "URI"
@@ -48,39 +48,41 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 	maybe_selections = config.iface_cache.get_feed(iface_uri, selections_ok = True)
 	if isinstance(maybe_selections, selections.Selections):
 		if not select_only:
-			from zeroinstall.injector import fetch
-			fetcher = fetch.Fetcher(h)
-			blocker = maybe_selections.download_missing(config.iface_cache, fetcher)
+			blocker = maybe_selections.download_missing(config.iface_cache, config.fetcher)
 			if blocker:
 				logging.info(_("Waiting for selected implementations to be downloaded..."))
-				h.wait_for_blocker(blocker)
-			_download_missing_selections(h, maybe_selections)
+				config.handler.wait_for_blocker(blocker)
 		return maybe_selections
 
 	root_iface = config.iface_cache.get_interface(iface_uri)
 
-	command_name = options.command
-	if command_name is None:
-		command_name = 'run'
-	elif command_name == '':
-		command_name = None
-	policy = Policy(iface_uri,
-			handler = None,		# (use config instead)
-			src = options.source,
-			command = command_name,
-			config = config)
+	r = requirements.Requirements(iface_uri)
 
+	# (None becomes 'run', while '' becomes None)
+	if options.command is None:
+		r.command = 'run'
+	else:
+		r.command = options.command or None
+	r.source = bool(options.source)
+
+	r.before = options.before
+	r.not_before = options.not_before
+
+	policy = Policy(config = config, requirements = r)
+
+	# XXX
 	if options.before or options.not_before:
 		policy.solver.extra_restrictions[root_iface] = [
 				model.VersionRangeRestriction(model.parse_version(options.before),
 							      model.parse_version(options.not_before))]
-
-	if options.os or options.cpu:
 		from zeroinstall.injector import arch
 		policy.target_arch = arch.get_architecture(options.os, options.cpu)
 
+	r.os = options.os
+	r.cpu = options.cpu
+
 	if options.offline:
-		policy.network_use = model.network_offline
+		config.network_use = model.network_offline
 
 	# Note that need_download() triggers a solve
 	if options.refresh or options.gui:
@@ -121,41 +123,21 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 		logging.info(_("Switching to GUI mode... (use --console to disable)"))
 
 	if options.gui:
-		gui_args = []
+		gui_args = policy.requirements.get_as_options()
 		if download_only:
 			# Just changes the button's label
 			gui_args.append('--download-only')
 		if options.refresh:
 			gui_args.append('--refresh')
-		if options.not_before:
-			gui_args.insert(0, options.not_before)
-			gui_args.insert(0, '--not-before')
-		if options.before:
-			gui_args.insert(0, options.before)
-			gui_args.insert(0, '--before')
-		if options.source:
-			gui_args.insert(0, '--source')
-		if options.message:
-			gui_args.insert(0, options.message)
-			gui_args.insert(0, '--message')
 		if options.verbose:
 			gui_args.insert(0, '--verbose')
 			if options.verbose > 1:
 				gui_args.insert(0, '--verbose')
-		if options.cpu:
-			gui_args.insert(0, options.cpu)
-			gui_args.insert(0, '--cpu')
-		if options.os:
-			gui_args.insert(0, options.os)
-			gui_args.insert(0, '--os')
 		if options.with_store:
 			for x in options.with_store:
 				gui_args += ['--with-store', x]
 		if select_only:
 			gui_args.append('--select-only')
-		if command_name is not None:
-			gui_args.append('--command')
-			gui_args.append(command_name)
 
 		from zeroinstall import helpers
 		sels = helpers.get_selections_gui(iface_uri, gui_args, test_callback)

@@ -195,7 +195,7 @@ class IfaceCache(object):
 	def stores(self):
 		"""deprecated"""
 		from zeroinstall.injector import policy
-		raise Exception("iface_cache.stores")
+		#raise Exception("iface_cache.stores")
 		return policy.get_deprecated_singleton_config().stores
 
 	@property

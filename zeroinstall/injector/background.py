@@ -13,7 +13,6 @@ from zeroinstall import _
 import sys, os
 from logging import info, warn
 from zeroinstall.support import tasks
-from zeroinstall.injector.iface_cache import iface_cache
 from zeroinstall.injector import handler
 
 def _escape_xml(s):
@@ -160,10 +159,14 @@ def _detach():
 
 	return False
 
-def _check_for_updates(policy, verbose):
-	root_iface = iface_cache.get_interface(policy.root).get_name()
+def _check_for_updates(old_policy, verbose):
+	from zeroinstall.injector.policy import load_config, Policy
 
-	policy.handler = BackgroundHandler(root_iface, policy.root)
+	iface_cache = old_policy.config.iface_cache
+	root_iface = iface_cache.get_interface(old_policy.root).get_name()
+
+	background_config = load_config(BackgroundHandler(root_iface, old_policy.root))
+	policy = Policy(config = background_config, requirements = old_policy.requirements)
 
 	info(_("Checking for updates to '%s' in a background process"), root_iface)
 	if verbose:
@@ -227,6 +230,7 @@ def spawn_background_update(policy, verbose):
 	@type policy: L{policy.Policy}
 	@param verbose: whether to notify the user about minor events
 	@type verbose: bool"""
+	iface_cache = policy.config.iface_cache
 	# Mark all feeds as being updated. Do this before forking, so that if someone is
 	# running lots of 0launch commands in series on the same program we don't start
 	# huge numbers of processes.

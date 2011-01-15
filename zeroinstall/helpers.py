@@ -108,10 +108,11 @@ def ensure_cached(uri, command = 'run'):
 	@return: the selected implementations, or None if the user cancelled
 	@rtype: L{zeroinstall.injector.selections.Selections}
 	"""
-	from zeroinstall.injector import autopolicy, selections
+	from zeroinstall.injector import policy, selections, handler
 
-	p = autopolicy.AutoPolicy(uri, download_only = True, command = command)
-	p.freshness = 0		# Don't check for updates
+	config = policy.load_config(handler.Handler())
+	p = policy.Policy(uri, command = command, config = config)
+	p.freshness = 0		# XXX: Don't check for updates
 
 	if p.need_download() or not p.ready:
 		if os.environ.get('DISPLAY', None):

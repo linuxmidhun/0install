@@ -87,7 +87,7 @@ class Store:
 	
 	def add_archive_to_cache(self, required_digest, data, url, extract = None, type = None, start_offset = 0, try_helper = False):
 		import unpack
-		info(_("Caching new implementation (digest %s)"), required_digest)
+		info(_("Caching new implementation (digest %s) in %s"), required_digest, self.dir)
 
 		if self.lookup(required_digest):
 			info(_("Not adding %s as it already exists!"), required_digest)
