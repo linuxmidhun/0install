@@ -4,7 +4,6 @@
 import gtk, gobject, pango
 
 from zeroinstall.support import tasks, pretty_size
-from zeroinstall.injector.iface_cache import iface_cache
 from zeroinstall.injector import model, reader
 import properties
 from zeroinstall.gtkui.icon import load_icon
@@ -260,7 +259,7 @@ class InterfaceBrowser:
 			return self.cached_icon[iface.uri]
 		except KeyError:
 			# Try the on-disk cache
-			iconpath = iface_cache.get_icon_path(iface)
+			iconpath = self.policy.config.iface_cache.get_icon_path(iface)
 
 			if iconpath:
 				icon = load_icon(iconpath, ICON_SIZE, ICON_SIZE)
@@ -285,7 +284,7 @@ class InterfaceBrowser:
 							# Try to insert new icon into the cache
 							# If it fails, we'll be left with None in the cached_icon so
 							# we don't try again.
-							iconpath = iface_cache.get_icon_path(iface)
+							iconpath = self.policy.config.iface_cache.get_icon_path(iface)
 							if iconpath:
 								self.cached_icon[iface.uri] = load_icon(iconpath, ICON_SIZE, ICON_SIZE)
 								self.build_tree()
@@ -308,6 +307,8 @@ class InterfaceBrowser:
 		return None
 
 	def build_tree(self):
+		iface_cache = self.policy.config.iface_cache
+
 		if self.original_implementation is None:
 			self.set_original_implementations()
 
@@ -410,9 +411,9 @@ class InterfaceBrowser:
 			info(_("0compile command completed successfully. Reloading interface details."))
 			reader.update_from_cache(interface)
 			for feed in interface.extra_feeds:
-				 iface_cache.get_feed(feed.uri, force = True)
+				 self.policy.config.iface_cache.get_feed(feed.uri, force = True)
 			self.policy.recalculate()
-		compile.compile(on_success, interface.uri, autocompile = autocompile)
+		compile.compile(self.policy.config, on_success, interface.uri, autocompile = autocompile)
 
 	def set_original_implementations(self):
 		assert self.original_implementation is None

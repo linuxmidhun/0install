@@ -28,7 +28,7 @@ class Requirements(object):
 		self.os = self.cpu = None
 		self.message = None
 
-	def parse_options(self, optioins):
+	def parse_options(self, options):
 		self.not_before = options.not_before
 		self.before = options.before
 

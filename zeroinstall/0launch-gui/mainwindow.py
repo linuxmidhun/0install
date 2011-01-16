@@ -78,7 +78,7 @@ class MainWindow:
 				gui_help.display()
 			elif resp == SHOW_PREFERENCES:
 				import preferences
-				preferences.show_preferences(policy)
+				preferences.show_preferences(policy, notify_cb = lambda: policy.recalculate())
 		self.window.connect('response', response)
 		self.window.realize()	# Make busy pointer work, even with --systray
 

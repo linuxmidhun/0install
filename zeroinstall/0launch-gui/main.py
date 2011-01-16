@@ -5,7 +5,7 @@ import os, sys
 
 from optparse import OptionParser
 
-from zeroinstall.injector import model, arch
+from zeroinstall.injector import model, arch, requirements
 from zeroinstall.injector.policy import Policy, load_config
 from zeroinstall.support import tasks
 
@@ -94,7 +94,7 @@ def run_gui(args):
 	widgets = dialog.Template('main')
 
 	policy = Policy(config = config, requirements = r)
-	root_iface = iface_cache.get_interface(interface_uri)
+	root_iface = config.iface_cache.get_interface(interface_uri)
 	policy.solver.record_details = True
 
 	window = mainwindow.MainWindow(policy, widgets, download_only = bool(options.download_only), select_only = bool(options.select_only))
