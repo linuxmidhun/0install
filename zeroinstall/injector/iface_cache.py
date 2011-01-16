@@ -193,10 +193,7 @@ class IfaceCache(object):
 
 	@property
 	def stores(self):
-		"""deprecated"""
-		from zeroinstall.injector import policy
-		#raise Exception("iface_cache.stores")
-		return policy.get_deprecated_singleton_config().stores
+		raise Exception("Use config.stores instead")
 
 	@property
 	def distro(self):
@@ -372,7 +369,7 @@ class IfaceCache(object):
 
 		debug(_("Initialising new interface object for %s"), uri)
 		self._interfaces[uri] = Interface(uri)
-		reader.update_from_cache(self._interfaces[uri])
+		reader.update_from_cache(self._interfaces[uri], iface_cache = self)
 		return self._interfaces[uri]
 
 	def list_all_interfaces(self):

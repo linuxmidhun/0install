@@ -234,9 +234,9 @@ def spawn_background_update(policy, verbose):
 	# Mark all feeds as being updated. Do this before forking, so that if someone is
 	# running lots of 0launch commands in series on the same program we don't start
 	# huge numbers of processes.
-	for x in policy.implementation:
-		iface_cache.mark_as_checking(x.uri)			# Main feed
-		for f in policy.usable_feeds(x):
+	for uri in policy.solver.selections.selections:
+		iface_cache.mark_as_checking(uri)			# Main feed
+		for f in policy.usable_feeds(iface_cache.get_interface(uri)):
 			iface_cache.mark_as_checking(f.uri)		# Extra feeds
 
 	if _detach():

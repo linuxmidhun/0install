@@ -11,7 +11,7 @@ os.environ['LANGUAGE'] = 'C'
 
 sys.path.insert(0, '..')
 from zeroinstall.injector import qdom
-from zeroinstall.injector import iface_cache, download, distro, model, handler, policy
+from zeroinstall.injector import iface_cache, download, distro, model, handler, policy, reader
 from zeroinstall.zerostore import Store, Stores; Store._add_with_helper = lambda *unused: False
 from zeroinstall import support, helpers
 from zeroinstall.support import basedir
@@ -141,3 +141,8 @@ class BaseTest(unittest.TestCase):
 		shutil.rmtree(self.gnupg_home)
 
 		os.environ['PATH'] = self.old_path
+
+	def import_feed(self, url, path):
+		iface_cache = self.config.iface_cache
+		iface_cache.get_interface(url)
+		iface_cache._feeds[url] = reader.load_feed(path)

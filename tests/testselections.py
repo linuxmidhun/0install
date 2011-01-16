@@ -5,7 +5,7 @@ import sys, os
 import unittest
 
 sys.path.insert(0, '..')
-from zeroinstall.injector import selections, model, reader, policy, namespaces, qdom
+from zeroinstall.injector import selections, model, policy, namespaces, qdom
 
 mydir = os.path.dirname(os.path.abspath(__file__))
 
@@ -14,8 +14,8 @@ class TestSelections(BaseTest):
 		p = policy.Policy('http://foo/Source.xml', src = True, config = self.config)
 		source = self.config.iface_cache.get_interface('http://foo/Source.xml')
 		compiler = self.config.iface_cache.get_interface('http://foo/Compiler.xml')
-		reader.update(source, 'Source.xml')
-		reader.update(compiler, 'Compiler.xml')
+		self.import_feed(source.uri, 'Source.xml')
+		self.import_feed(compiler.uri, 'Compiler.xml')
 
 		p.freshness = 0
 		p.network_use = model.network_full

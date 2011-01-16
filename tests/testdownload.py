@@ -11,7 +11,7 @@ sys.path.insert(0, '..')
 
 os.environ["http_proxy"] = "localhost:8000"
 
-from zeroinstall.injector import model, gpg, iface_cache, download, reader, trust, handler, background, arch, selections, qdom, run
+from zeroinstall.injector import model, gpg, iface_cache, download, trust, handler, background, arch, selections, qdom, run
 from zeroinstall.injector.policy import Policy
 from zeroinstall.zerostore import Store, NotStored; Store._add_with_helper = lambda *unused: False
 from zeroinstall.support import basedir, tasks
@@ -167,10 +167,10 @@ class TestDownload(BaseTest):
 			except NotStored:
 				pass
 			cli.main(['--download-only', 'selections.xml'])
-			path = self.config.iface_cache.stores.lookup_any(sels.selections['http://example.com:8000/Hello.xml'].digests)
+			path = self.config.stores.lookup_any(sels.selections['http://example.com:8000/Hello.xml'].digests)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
 
-			assert sels.download_missing(self.config.iface_cache, None) is None
+			assert sels.download_missing(self.config) is None
 
 	def testHelpers(self):
 		from zeroinstall import helpers
@@ -181,7 +181,7 @@ class TestDownload(BaseTest):
 			sels = helpers.ensure_cached('http://example.com:8000/Hello.xml')
 			path = self.config.stores.lookup_any(sels.selections['http://example.com:8000/Hello.xml'].digests)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
-			assert sels.download_missing(self.config.iface_cache, None) is None
+			assert sels.download_missing(self.config) is None
 
 	def testSelectionsWithFeed(self):
 		from zeroinstall.injector import cli
@@ -198,7 +198,7 @@ class TestDownload(BaseTest):
 			path = self.config.stores.lookup_any(sels.selections['http://example.com:8000/Hello.xml'].digests)
 			assert os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
 
-			assert sels.download_missing(self.config.iface_cache, None) is None
+			assert sels.download_missing(self.config) is None
 	
 	def testAcceptKey(self):
 		with output_suppressed():
@@ -364,11 +364,11 @@ class TestDownload(BaseTest):
 
 	def testBackground(self, verbose = False):
 		p = Policy('http://example.com:8000/Hello.xml', config = self.config)
-		reader.update(p.config.iface_cache.get_interface(p.root), 'Hello.xml')
+		self.import_feed(p.root, 'Hello.xml')
 		p.freshness = 0
 		p.network_use = model.network_minimal
 		p.solver.solve(p.root, arch.get_host_architecture())
-		assert p.ready
+		assert p.ready, p.solver.get_failure_reason()
 
 		@tasks.async
 		def choose_download(registed_cb, nid, actions):

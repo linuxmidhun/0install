@@ -147,8 +147,8 @@ def assertSelection(expected, repo):
 		assert s.ready
 
 		actual = []
-		for iface, impl in s.selections.iteritems():
-			actual.append(((iface.uri.rsplit('/', 1)[1]), impl.get_version()))
+		for iface_uri, impl in s.selections.selections.iteritems():
+			actual.append(((iface_uri.rsplit('/', 1)[1]), impl.version))
 
 		expected.sort()
 		actual.sort()
@@ -287,9 +287,9 @@ class TestSAT(BaseTest):
 			""")
 		assert not s.ready
 		selected = {}
-		for iface, impl in s.selections.iteritems():
-			if impl is not None: impl = impl.get_version()
-			selected[iface.uri.rsplit('/', 1)[1]] = impl
+		for iface_uri, impl in s.selections.selections.iteritems():
+			if impl is not None: impl = impl.version
+			selected[iface_uri.rsplit('/', 1)[1]] = impl
 		self.assertEquals({
 			'prog': '2',
 			'liba': '2',

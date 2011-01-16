@@ -18,11 +18,11 @@ class TestSolver(BaseTest):
 		s = solver.DefaultSolver(self.config)
 
 		foo = iface_cache.get_interface('http://foo/Binary.xml')
-		reader.update(foo, 'Binary.xml')
+		self.import_feed(foo.uri, 'Binary.xml')
 		foo_src = iface_cache.get_interface('http://foo/Source.xml')
-		reader.update(foo_src, 'Source.xml')
+		self.import_feed(foo_src.uri, 'Source.xml')
 		compiler = iface_cache.get_interface('http://foo/Compiler.xml')
-		reader.update(compiler, 'Compiler.xml')
+		self.import_feed(compiler.uri, 'Compiler.xml')
 
 		binary_arch = arch.Architecture({None: 1}, {None: 1})
 		assert str(binary_arch).startswith("<Arch")
@@ -47,12 +47,13 @@ class TestSolver(BaseTest):
 		iface_cache = self.config.iface_cache
 		s = solver.DefaultSolver(self.config)
 
-		foo = iface_cache.get_interface('http://foo/Binary.xml')
-		reader.update(foo, 'Binary.xml')
+		foo_binary_uri = 'http://foo/Binary.xml'
+		foo = iface_cache.get_interface(foo_binary_uri)
+		self.import_feed(foo_binary_uri, 'Binary.xml')
 		foo_src = iface_cache.get_interface('http://foo/Source.xml')
-		reader.update(foo_src, 'Source.xml')
+		self.import_feed(foo_src.uri, 'Source.xml')
 		compiler = iface_cache.get_interface('http://foo/Compiler.xml')
-		reader.update(compiler, 'Compiler.xml')
+		self.import_feed(compiler.uri, 'Compiler.xml')
 
 		binary_arch = arch.Architecture({None: 1}, {None: 1})
 		s.record_details = True
@@ -74,7 +75,7 @@ class TestSolver(BaseTest):
 		s = solver.DefaultSolver(self.config)
 
 		foo = iface_cache.get_interface('http://foo/Recursive.xml')
-		reader.update(foo, 'Recursive.xml')
+		self.import_feed(foo.uri, 'Recursive.xml')
 
 		binary_arch = arch.Architecture({None: 1}, {None: 1})
 		s.record_details = True
@@ -91,9 +92,9 @@ class TestSolver(BaseTest):
 		s = solver.DefaultSolver(self.config)
 
 		foo = iface_cache.get_interface('http://foo/MultiArch.xml')
-		reader.update(foo, 'MultiArch.xml')
+		self.import_feed(foo.uri, 'MultiArch.xml')
 		lib = iface_cache.get_interface('http://foo/MultiArchLib.xml')
-		reader.update(lib, 'MultiArchLib.xml')
+		self.import_feed(lib.uri, 'MultiArchLib.xml')
 
 		# On an i686 system we can only use the i486 implementation
 
@@ -155,7 +156,7 @@ class TestSolver(BaseTest):
 
 			s = solver.DefaultSolver(self.config)
 			iface = iface_cache.get_interface('http://foo/Langs.xml')
-			reader.update(iface, 'Langs.xml')
+			self.import_feed(iface.uri, 'Langs.xml')
 
 			# 1 is the oldest, but the only one in our language
 			binary_arch = arch.get_architecture(None, 'arch_1')

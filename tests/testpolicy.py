@@ -18,11 +18,11 @@ class TestPolicy(BaseTest):
 		warnings.filterwarnings("ignore", category = DeprecationWarning)
 
 		foo = iface_cache.get_interface('http://foo/Binary.xml')
-		reader.update(foo, 'Binary.xml')
+		self.import_feed(foo.uri, 'Binary.xml')
 		foo_src = iface_cache.get_interface('http://foo/Source.xml')
-		reader.update(foo_src, 'Source.xml')
+		self.import_feed(foo_src.uri, 'Source.xml')
 		compiler = iface_cache.get_interface('http://foo/Compiler.xml')
-		reader.update(compiler, 'Compiler.xml')
+		self.import_feed(compiler.uri, 'Compiler.xml')
 
 		p = Policy('http://foo/Binary.xml', config = self.config)
 		p.freshness = 0

@@ -72,7 +72,7 @@ class TestReader(BaseTest):
 </interface>""" % (foo_iface_uri, bar_iface_uri, bar_iface_uri))
 		tmp.flush()
 		iface = model.Interface(foo_iface_uri)
-		reader.update(iface, tmp.name)
+		reader.update(iface, tmp.name, iface_cache = self.config.iface_cache)
 		feed = self.config.iface_cache.get_feed(foo_iface_uri)
 
 		impl = feed.implementations['sha1=123']
@@ -112,7 +112,7 @@ class TestReader(BaseTest):
 </interface>""")
 		tmp.flush()
 		iface = model.Interface(foo_iface_uri)
-		reader.update(iface, tmp.name, local = True)
+		reader.update(iface, tmp.name, local = True, iface_cache = self.config.iface_cache)
 
 		feed = self.config.iface_cache.get_feed(foo_iface_uri)
 
@@ -150,7 +150,7 @@ class TestReader(BaseTest):
 </interface>""" % foo_iface_uri)
 		tmp.flush()
 		iface = model.Interface(foo_iface_uri)
-		reader.update(iface, tmp.name)
+		reader.update(iface, tmp.name, iface_cache = self.config.iface_cache)
 		feed = self.config.iface_cache.get_feed(foo_iface_uri)
 		impl = feed.implementations['sha1=123']
 		assert impl.version == [[1, 0], -1, [3], -2]
@@ -173,7 +173,7 @@ class TestReader(BaseTest):
 </interface>""" % foo_iface_uri)
 		tmp.flush()
 		iface = model.Interface(foo_iface_uri)
-		reader.update(iface, tmp.name)
+		reader.update(iface, tmp.name, iface_cache = self.config.iface_cache)
 
 		feed = iface_cache.get_feed(foo_iface_uri)
 
@@ -201,7 +201,7 @@ class TestReader(BaseTest):
 		tmp.flush()
 
 		iface = model.Interface(foo_iface_uri)
-		reader.update(iface, tmp.name, True)
+		reader.update(iface, tmp.name, True, iface_cache = self.config.iface_cache)
 
 		master_feed = iface_cache.get_feed(foo_iface_uri)
 		assert len(master_feed.implementations) == 0

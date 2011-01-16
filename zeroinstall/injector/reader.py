@@ -161,7 +161,7 @@ def check_readable(feed_url, source):
 			{'uri': feed_url, 'source': source, 'exception': ex})
 		raise InvalidInterface(_("Error loading feed '%(uri)s':\n\n%(exception)s") % {'uri': feed_url, 'exception': ex})
 
-def update(interface, source, local = False):
+def update(interface, source, local = False, iface_cache = None):
 	"""Read in information about an interface.
 	Deprecated.
 	@param interface: the interface object to update
@@ -183,9 +183,6 @@ def update(interface, source, local = False):
 						"%(interface_uri)s was requested") %
 						{'feed_url': feed.url, 'interface_uri': interface.uri})
 
-	# Hack.
-	from zeroinstall.injector import policy
-	iface_cache = policy.get_deprecated_singleton_config().iface_cache
 	iface_cache._feeds[unicode(interface.uri)] = feed
 
 	return feed

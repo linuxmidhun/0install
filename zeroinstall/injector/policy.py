@@ -322,12 +322,13 @@ class Policy(object):
 	def get_uncached_implementations(self):
 		"""List all chosen implementations which aren't yet available locally.
 		@rtype: [(L{model.Interface}, L{model.Implementation})]"""
+		iface_cache = self.config.iface_cache
 		uncached = []
-		for iface in self.solver.selections:
-			impl = self.solver.selections[iface]
+		for uri, selection in self.solver.selections.selections.iteritems():
+			impl = selection.impl
 			assert impl, self.solver.selections
 			if not self.get_cached(impl):
-				uncached.append((iface, impl))
+				uncached.append((iface_cache.get_interface(uri), impl))
 		return uncached
 
 	def refresh_all(self, force = True):

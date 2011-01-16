@@ -47,7 +47,7 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 	maybe_selections = config.iface_cache.get_feed(iface_uri, selections_ok = True)
 	if isinstance(maybe_selections, selections.Selections):
 		if not select_only:
-			blocker = maybe_selections.download_missing(config.iface_cache, config.fetcher)
+			blocker = maybe_selections.download_missing(config)
 			if blocker:
 				logging.info(_("Waiting for selected implementations to be downloaded..."))
 				config.handler.wait_for_blocker(blocker)

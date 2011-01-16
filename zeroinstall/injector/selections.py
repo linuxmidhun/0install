@@ -246,21 +246,23 @@ class Selections(object):
 	def __repr__(self):
 		return "Selections for " + self.interface
 
-	def download_missing(self, iface_cache, fetcher):
+	def download_missing(self, config):
 		"""Check all selected implementations are available.
 		Download any that are not present.
 		Note: package implementations (distribution packages) are ignored.
-		@param iface_cache: cache to find feeds with download information
-		@param fetcher: used to download missing implementations
+		@param config: used to get iface_cache, stores and fetcher
 		@return: a L{tasks.Blocker} or None"""
 		from zeroinstall.zerostore import NotStored
+
+		iface_cache = config.iface_cache
+		stores = config.stores
 
 		# Check that every required selection is cached
 		needed_downloads = []
 		for sel in self.selections.values():
 			if (not sel.local_path) and (not sel.id.startswith('package:')):
 				try:
-					iface_cache.stores.lookup_any(sel.digests)
+					stores.lookup_any(sel.digests)
 				except NotStored:
 					needed_downloads.append(sel)
 		if not needed_downloads:
@@ -278,7 +280,7 @@ class Selections(object):
 				feed_url = sel.attrs.get('from-feed', None) or sel.attrs['interface']
 				feed = iface_cache.get_feed(feed_url)
 				if feed is None or sel.id not in feed.implementations:
-					fetch_feed = fetcher.download_and_import_feed(feed_url, iface_cache)
+					fetch_feed = config.fetcher.download_and_import_feed(feed_url, iface_cache)
 					yield fetch_feed
 					tasks.check(fetch_feed)
 
@@ -287,7 +289,7 @@ class Selections(object):
 				impl = feed.implementations[sel.id]
 				needed_impls.append(impl)
 
-			fetch_impls = fetcher.download_impls(needed_impls, iface_cache.stores)
+			fetch_impls = config.fetcher.download_impls(needed_impls, stores)
 			yield fetch_impls
 			tasks.check(fetch_impls)
 		return download()
