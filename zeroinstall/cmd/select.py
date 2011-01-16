@@ -57,29 +57,9 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 	root_iface = config.iface_cache.get_interface(iface_uri)
 
 	r = requirements.Requirements(iface_uri)
-
-	# (None becomes 'run', while '' becomes None)
-	if options.command is None:
-		r.command = 'run'
-	else:
-		r.command = options.command or None
-	r.source = bool(options.source)
-
-	r.before = options.before
-	r.not_before = options.not_before
+	r.parse_options(options)
 
 	policy = Policy(config = config, requirements = r)
-
-	# XXX
-	if options.before or options.not_before:
-		policy.solver.extra_restrictions[root_iface] = [
-				model.VersionRangeRestriction(model.parse_version(options.before),
-							      model.parse_version(options.not_before))]
-		from zeroinstall.injector import arch
-		policy.target_arch = arch.get_architecture(options.os, options.cpu)
-
-	r.os = options.os
-	r.cpu = options.cpu
 
 	if options.offline:
 		config.network_use = model.network_offline

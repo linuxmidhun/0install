@@ -28,6 +28,22 @@ class Requirements(object):
 		self.os = self.cpu = None
 		self.message = None
 
+	def parse_options(self, optioins):
+		self.not_before = options.not_before
+		self.before = options.before
+
+		self.source = bool(options.source)
+		self.message = options.message
+
+		self.cpu = options.cpu
+		self.os = options.os
+
+		# (None becomes 'run', while '' becomes None)
+		if options.command is None:
+			self.command = 'run'
+		else:
+			self.command = options.command or None
+
 	def get_as_options(self):
 		gui_args = []
 		if self.not_before:

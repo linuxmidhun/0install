@@ -181,6 +181,11 @@ class Policy(object):
 		debug(_("Supported systems: '%s'"), arch.os_ranks)
 		debug(_("Supported processors: '%s'"), arch.machine_ranks)
 
+		if requirements.before or requirements.not_before:
+			self.solver.extra_restrictions[self.interface_uri] = [
+					model.VersionRangeRestriction(model.parse_version(requirements.before),
+								      model.parse_version(requirements.not_before))]
+
 	@property
 	def fetcher(self):
 		return self.config.fetcher
