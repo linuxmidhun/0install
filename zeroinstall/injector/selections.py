@@ -261,7 +261,7 @@ class Selections(object):
 			if (not sel.local_path) and (not sel.id.startswith('package:')):
 				try:
 					iface_cache.stores.lookup_any(sel.digests)
-				except NotStored, ex:
+				except NotStored:
 					needed_downloads.append(sel)
 		if not needed_downloads:
 			return
@@ -310,8 +310,6 @@ class Selections(object):
 
 	def values(self):
 		# Deprecated
-		from zeroinstall.injector import policy
-		iface_cache = policy.get_deprecated_singleton_config().iface_cache
 		for (uri, sel) in self.selections.iteritems():
 			yield sel and sel.impl
 

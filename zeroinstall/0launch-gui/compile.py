@@ -5,10 +5,8 @@ import os, subprocess
 import gobject
 import dialog
 from StringIO import StringIO
-from logging import info
 
 from zeroinstall.injector import model, selections, qdom
-from zeroinstall.injector.policy import Policy
 
 XMLNS_0COMPILE = 'http://zero-install.sourceforge.net/2006/namespaces/0compile'
 
@@ -68,14 +66,13 @@ class Command:
 			self.done()
 			return False
 
-def compile(config, on_success, interface_uri, autocompile = False):
+def compile(on_success, interface_uri, autocompile = False):
 	our_min_version = '0.18'	# The oldest version of 0compile we support
 
 	def build(selections_xml):
 		# Get the chosen versions
 		sels = selections.Selections(qdom.parse(StringIO(selections_xml)))
 
-		root_iface = config.iface_cache.get_interface(interface_uri)
 		impl = sels.selections[interface_uri]
 
 		min_version = impl.attrs.get(XMLNS_0COMPILE + ' min-version', our_min_version)

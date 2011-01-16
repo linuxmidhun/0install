@@ -5,10 +5,9 @@ The B{0install add-feed} command-line interface.
 # Copyright (C) 2011, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
-import os, sys
-import logging
+import os
 
-from zeroinstall import cmd, SafeException, _
+from zeroinstall import SafeException, _
 from zeroinstall.cmd import UsageError
 from zeroinstall.injector import model, writer, handler
 from zeroinstall.injector.policy import Policy

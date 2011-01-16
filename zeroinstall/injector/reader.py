@@ -10,7 +10,7 @@ import os
 from logging import debug, info, warn
 
 from zeroinstall.support import basedir
-from zeroinstall.injector import qdom, distro
+from zeroinstall.injector import qdom
 from zeroinstall.injector.namespaces import config_site, config_prog, XMLNS_IFACE
 from zeroinstall.injector.model import Interface, InvalidInterface, ZeroInstallFeed, escape, Feed, stability_levels
 from zeroinstall.injector import model

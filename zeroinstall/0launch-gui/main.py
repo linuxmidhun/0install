@@ -5,7 +5,7 @@ import os, sys
 
 from optparse import OptionParser
 
-from zeroinstall.injector import model, arch, requirements
+from zeroinstall.injector import requirements
 from zeroinstall.injector.policy import Policy, load_config
 from zeroinstall.support import tasks
 

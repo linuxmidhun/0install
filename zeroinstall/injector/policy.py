@@ -14,7 +14,7 @@ from logging import info, debug, warn
 import ConfigParser
 
 from zeroinstall import zerostore, SafeException
-from zeroinstall.injector import arch
+from zeroinstall.injector import arch, model
 from zeroinstall.injector.model import Interface, Implementation, network_levels, network_offline, DistributionImplementation, network_full
 from zeroinstall.injector.handler import Handler
 from zeroinstall.injector.namespaces import config_site, config_prog
@@ -92,7 +92,7 @@ def load_config(handler):
 	config.network_use = parser.get('global', 'network_use')
 	config.freshness = int(parser.get('global', 'freshness'))
 
-	assert config.network_use in network_levels, self.network_use
+	assert config.network_use in network_levels, config.network_use
 
 	return config
 
@@ -298,7 +298,7 @@ class Policy(object):
 
 		try:
 			return self.implementation[interface]
-		except KeyError, ex:
+		except KeyError:
 			raise SafeException(_("No usable implementation found for '%s'.") % interface.uri)
 
 	def get_cached(self, impl):

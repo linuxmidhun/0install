@@ -10,8 +10,7 @@ import os, sys
 from optparse import OptionParser
 import logging
 
-from zeroinstall import SafeException, NeedDownload
-from zeroinstall.injector import model, autopolicy, selections
+from zeroinstall import SafeException
 
 valid_commands = ['select', 'download', 'run', 'update',
 		  'config', 'import', 'list', 'add-feed', 'remove-feed']

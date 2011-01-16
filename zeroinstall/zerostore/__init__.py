@@ -26,7 +26,6 @@ def _copytree2(src, dst):
 	import shutil
 	names = os.listdir(src)
 	assert os.path.isdir(dst)
-	errors = []
 	for name in names:
 		srcname = os.path.join(src, name)
 		dstname = os.path.join(dst, name)
@@ -103,7 +102,7 @@ class Store:
 
 		try:
 			self.check_manifest_and_rename(required_digest, tmp, extract, try_helper = try_helper)
-		except Exception, ex:
+		except Exception:
 			warn(_("Leaving extracted directory as %s"), tmp)
 			raise
 	

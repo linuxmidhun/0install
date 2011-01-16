@@ -34,7 +34,6 @@ def have_source_for(policy, interface):
 	# this point, so we check whether:
 	# - We have a feed of type 'src' (not fetched), or
 	# - We have a source implementation in a regular feed
-	have_src = False
 	for f in iface_cache.get_feed_imports(interface):
 		if f.machine == 'src':
 			return True
@@ -73,7 +72,7 @@ class Description:
 		try:
 			from locale import nl_langinfo, D_T_FMT
 			return time.strftime(nl_langinfo(D_T_FMT), time.localtime(secs))
-		except ImportError, ValueError:
+		except (ImportError, ValueError):
 			return time.ctime(secs)
 
 	def set_details(self, iface_cache, feed):

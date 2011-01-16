@@ -14,7 +14,7 @@ is also the policy used to run the injector's GUI.
 from zeroinstall import _
 from logging import info
 
-from zeroinstall.injector import policy, run
+from zeroinstall.injector import policy
 from zeroinstall.injector.handler import Handler
 
 class AutoPolicy(policy.Policy):

@@ -315,7 +315,6 @@ class InterfaceBrowser:
 		done = {}	# Detect cycles
 
 		self.model.clear()
-		parent = None
 		commands = self.policy.solver.selections.commands
 		def add_node(parent, iface, command):
 			# (command is the index into commands, if any)
@@ -413,7 +412,7 @@ class InterfaceBrowser:
 			for feed in interface.extra_feeds:
 				 self.policy.config.iface_cache.get_feed(feed.uri, force = True)
 			self.policy.recalculate()
-		compile.compile(self.policy.config, on_success, interface.uri, autocompile = autocompile)
+		compile.compile(on_success, interface.uri, autocompile = autocompile)
 
 	def set_original_implementations(self):
 		assert self.original_implementation is None

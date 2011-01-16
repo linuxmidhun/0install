@@ -6,7 +6,7 @@ Chooses a set of components to make a running program.
 # See the README file for details, or visit http://0install.net.
 
 from zeroinstall import _
-import os, tempfile, subprocess, sys, locale
+import os, locale
 from logging import debug, warn, info
 
 from zeroinstall.zerostore import BadDigest, NotStored
@@ -229,7 +229,6 @@ class SATSolver(Solver):
 		# selects that.
 		iface_cache = self.config.iface_cache
 
-		feeds_added = set()
 		problem = sat.SATProblem()
 
 		impl_to_var = {}	# Impl -> sat var
@@ -332,7 +331,6 @@ class SATSolver(Solver):
 			"""Name implementations from feed and assert that only one can be selected."""
 			if uri in ifaces_processed: return
 			ifaces_processed.add(uri)
-			iface_name = 'i%d' % len(ifaces_processed)
 
 			iface = iface_cache.get_interface(uri)
 

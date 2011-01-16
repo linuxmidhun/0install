@@ -35,7 +35,6 @@ class Preferences:
 			freshness_levels.append(Freshness(config.freshness,
 							  '%d seconds' % config.freshness))
 			times.append(config.freshness)
-		eb = gtk.EventBox()	# For the tooltip
 		freshness = widgets.get_widget('freshness')
 		for level in freshness_levels:
 			freshness.append_text(str(level))

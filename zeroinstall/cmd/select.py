@@ -5,13 +5,12 @@ The B{0install select} command-line interface.
 # Copyright (C) 2011, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
-from optparse import OptionParser
 import os, sys
 import logging
 
-from zeroinstall import cmd, SafeException, _
+from zeroinstall import _
 from zeroinstall.cmd import UsageError
-from zeroinstall.injector import model, selections, handler, requirements
+from zeroinstall.injector import model, selections, requirements
 from zeroinstall.injector.policy import Policy
 
 syntax = "URI"
@@ -53,8 +52,6 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 				logging.info(_("Waiting for selected implementations to be downloaded..."))
 				config.handler.wait_for_blocker(blocker)
 		return maybe_selections
-
-	root_iface = config.iface_cache.get_interface(iface_uri)
 
 	r = requirements.Requirements(iface_uri)
 	r.parse_options(options)
@@ -129,7 +126,7 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 		downloaded = policy.solve_and_download_impls(refresh = options.refresh or download_only or False,
 							     select_only = select_only)
 		if downloaded:
-			policy.handler.wait_for_blocker(downloaded)
+			config.handler.wait_for_blocker(downloaded)
 		sels = selections.Selections(policy)
 
 	return sels

@@ -5,12 +5,12 @@ The B{0install import} command-line interface.
 # Copyright (C) 2011, Thomas Leonard
 # See the README file for details, or visit http://0install.net.
 
-import os, sys
+import os
 import logging
 
-from zeroinstall import cmd, SafeException, _
+from zeroinstall import SafeException, _
 from zeroinstall.cmd import UsageError
-from zeroinstall.injector import model, autopolicy, selections, gpg, fetch
+from zeroinstall.injector import gpg, fetch
 from zeroinstall.injector.iface_cache import PendingFeed
 from zeroinstall.support import tasks
 from xml.dom import minidom
