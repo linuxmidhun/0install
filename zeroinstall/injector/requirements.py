@@ -40,7 +40,10 @@ class Requirements(object):
 
 		# (None becomes 'run', while '' becomes None)
 		if options.command is None:
-			self.command = 'run'
+			if self.source:
+				self.command = 'compile'
+			else:
+				self.command = 'run'
 		else:
 			self.command = options.command or None
 
@@ -63,8 +66,7 @@ class Requirements(object):
 		if self.os:
 			gui_args.insert(0, self.os)
 			gui_args.insert(0, '--os')
-		if self.command is not None:
-			gui_args.append('--command')
-			gui_args.append(self.command)
+		gui_args.append('--command')
+		gui_args.append(self.command or '')
 
 		return gui_args
