@@ -182,7 +182,7 @@ class Policy(object):
 		debug(_("Supported processors: '%s'"), arch.machine_ranks)
 
 		if requirements.before or requirements.not_before:
-			self.solver.extra_restrictions[self.interface_uri] = [
+			self.solver.extra_restrictions[config.iface_cache.get_interface(requirements.interface_uri)] = [
 					model.VersionRangeRestriction(model.parse_version(requirements.before),
 								      model.parse_version(requirements.not_before))]
 
