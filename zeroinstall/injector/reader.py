@@ -183,6 +183,9 @@ def update(interface, source, local = False, iface_cache = None):
 						"%(interface_uri)s was requested") %
 						{'feed_url': feed.url, 'interface_uri': interface.uri})
 
+	if iface_cache is None:
+		from zeroinstall.injector import policy
+		iface_cache = policy.get_deprecated_singleton_config().iface_cache
 	iface_cache._feeds[unicode(interface.uri)] = feed
 
 	return feed

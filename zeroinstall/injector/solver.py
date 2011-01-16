@@ -121,6 +121,10 @@ class Solver(object):
 class SATSolver(Solver):
 	__slots__ = ['_failure_reason', 'config', 'extra_restrictions', 'langs']
 
+	@property
+	def iface_cache(self):
+		return self.config.iface_cache	# (deprecated; used by 0compile)
+
 	"""Converts the problem to a set of pseudo-boolean constraints and uses a PB solver to solve them.
 	@ivar langs: the preferred languages (e.g. ["es_ES", "en"]). Initialised to the current locale.
 	@type langs: str"""

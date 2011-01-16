@@ -635,9 +635,10 @@ class Interface(object):
 		self.stability_policy = None
 
 	def get_name(self):
-		#feed = self._main_feed
-		#if feed:
-		#	return feed.get_name()
+		from zeroinstall.injector.iface_cache import iface_cache
+		feed = iface_cache.get_feed(self.uri)
+		if feed:
+			return feed.get_name()
 		return '(' + os.path.basename(self.uri) + ')'
 	
 	def __repr__(self):

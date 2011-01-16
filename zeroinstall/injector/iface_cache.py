@@ -193,7 +193,8 @@ class IfaceCache(object):
 
 	@property
 	def stores(self):
-		raise Exception("Use config.stores instead")
+		from zeroinstall.injector import policy
+		return policy.get_deprecated_singleton_config().stores
 
 	@property
 	def distro(self):
@@ -496,4 +497,4 @@ class IfaceCache(object):
 				impls += feed.implementations.values()
 		return impls
 
-#iface_cache = IfaceCache()
+iface_cache = IfaceCache()

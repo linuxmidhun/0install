@@ -7,7 +7,7 @@ Load and save a set of chosen implementations.
 # See the README file for details, or visit http://0install.net.
 
 from zeroinstall import _
-from zeroinstall.injector.policy import Policy
+from zeroinstall.injector.policy import Policy, get_deprecated_singleton_config
 from zeroinstall.injector.model import process_binding, process_depends, binding_names, Command
 from zeroinstall.injector.namespaces import XMLNS_IFACE
 from zeroinstall.injector.qdom import Element, Prefixes
@@ -246,13 +246,16 @@ class Selections(object):
 	def __repr__(self):
 		return "Selections for " + self.interface
 
-	def download_missing(self, config):
+	def download_missing(self, config, _old = None):
 		"""Check all selected implementations are available.
 		Download any that are not present.
 		Note: package implementations (distribution packages) are ignored.
 		@param config: used to get iface_cache, stores and fetcher
 		@return: a L{tasks.Blocker} or None"""
 		from zeroinstall.zerostore import NotStored
+
+		if _old:
+			config = get_deprecated_singleton_config()
 
 		iface_cache = config.iface_cache
 		stores = config.stores
@@ -306,7 +309,7 @@ class Selections(object):
 	def iteritems(self):
 		# Deprecated
 		from zeroinstall.injector import policy
-		iface_cache = policy.get_deprecated_singleton_config().iface_cache
+		iface_cache = get_deprecated_singleton_config().iface_cache
 		for (uri, sel) in self.selections.iteritems():
 			yield (iface_cache.get_interface(uri), sel and sel.impl)
 
@@ -318,7 +321,7 @@ class Selections(object):
 	def __iter__(self):
 		# Deprecated
 		from zeroinstall.injector import policy
-		iface_cache = policy.get_deprecated_singleton_config().iface_cache
+		iface_cache = get_deprecated_singleton_config().iface_cache
 		for (uri, sel) in self.selections.iteritems():
 			yield iface_cache.get_interface(uri)
 

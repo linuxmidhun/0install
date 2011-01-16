@@ -48,7 +48,8 @@ class Config(object):
 	def iface_cache(self):
 		if not self._iface_cache:
 			from zeroinstall.injector import iface_cache
-			self._iface_cache = iface_cache.IfaceCache()
+			self._iface_cache = iface_cache.iface_cache
+			#self._iface_cache = iface_cache.IfaceCache()
 		return self._iface_cache
 
 	@property
@@ -136,6 +137,11 @@ class Policy(object):
 
 	ready = property(lambda self: self.solver.ready)
 
+	# (used by 0test)
+	handler = property(lambda self: self.config.handler,
+			   lambda self, value: setattr(self.config, 'handler', value))
+
+
 	def __init__(self, root = None, handler = None, src = None, command = -1, config = None, requirements = None):
 		"""
 		@param requirements: Details about the program we want to run
@@ -165,7 +171,6 @@ class Policy(object):
 		self.stale_feeds = set()
 
 		if config is None:
-			assert False #XXX
 			self.config = load_config(handler or Handler())
 		else:
 			assert handler is None, "can't pass a handler and a config"
@@ -189,10 +194,6 @@ class Policy(object):
 	@property
 	def fetcher(self):
 		return self.config.fetcher
-
-	@property
-	def handler(self):
-		return self.config.handler
 
 	def save_config(self):
 		self.config.save_globals()

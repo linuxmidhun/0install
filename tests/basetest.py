@@ -118,6 +118,7 @@ class BaseTest(unittest.TestCase):
 
 		self.config = TestConfig()
 		policy._config = self.config	# XXX
+		iface_cache.iface_cache = self.config.iface_cache
 
 		logging.getLogger().setLevel(logging.WARN)
 

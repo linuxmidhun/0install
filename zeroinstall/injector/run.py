@@ -100,7 +100,7 @@ def execute_selections(selections, prog_args, dry_run = False, main = None, wrap
 	@since: 0.27
 	@precondition: All implementations are in the cache.
 	"""
-	assert stores is not None
+	#assert stores is not None
 	if stores is None:
 		from zeroinstall import zerostore
 		stores = zerostore.Stores()
