@@ -46,8 +46,7 @@ def handle(config, options, args):
 			yield keys_downloaded.finished
 			tasks.check(keys_downloaded.finished)
 			if not config.iface_cache.update_feed_if_trusted(uri, pending.sigs, pending.new_xml):
-				fetcher = fetch.Fetcher(h)
-				blocker = h.confirm_keys(pending, fetcher.fetch_key_info)
+				blocker = h.confirm_keys(pending, config.fetcher.fetch_key_info)
 				if blocker:
 					yield blocker
 					tasks.check(blocker)

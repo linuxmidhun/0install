@@ -337,23 +337,25 @@ class Policy(object):
 		@param force: Whether to restart existing downloads."""
 		return self.solve_with_downloads(force = True)
 
-	def get_feed_targets(self, feed_iface_uri):
-		"""Return a list of Interfaces for which feed_iface can be a feed.
-		This is used by B{0launch --feed}.
+	def get_feed_targets(self, feed):
+		"""Return a list of Interfaces for which feed can be a feed.
+		This is used by B{0install add-feed}.
+		@param feed: the feed
+		@type feed: L{model.ZeroInstallFeed} (or, deprecated, a URL)
 		@rtype: [model.Interface]
 		@raise SafeException: If there are no known feeds."""
-		# TODO: what if it isn't cached yet?
-		feed_iface = self.config.iface_cache.get_interface(feed_iface_uri)
-		if not feed_iface.feed_for:
-			if not feed_iface.name:
-				raise SafeException(_("Can't get feed targets for '%s'; failed to load it.") %
-						feed_iface_uri)
+
+		if not isinstance(feed, model.ZeroInstallFeed):
+			# (deprecated)
+			feed = self.config.iface_cache.get_feed(feed)
+			if feed is None:
+				raise SafeException("Feed is not cached and using deprecated API")
+
+		if not feed.feed_for:
 			raise SafeException(_("Missing <feed-for> element in '%s'; "
-					"it can't be used as a feed for any other interface.") % feed_iface_uri)
-		feed_targets = feed_iface.feed_for
+					"it can't be used as a feed for any other interface.") % feed.url)
+		feed_targets = feed.feed_for
 		debug(_("Feed targets: %s"), feed_targets)
-		if not feed_iface.name:
-			warn(_("Warning: unknown interface '%s'") % feed_iface_uri)
 		return [self.config.iface_cache.get_interface(uri) for uri in feed_targets]
 
 	@tasks.async

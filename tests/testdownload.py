@@ -69,6 +69,7 @@ class TestDownload(BaseTest):
 	def setUp(self):
 		BaseTest.setUp(self)
 
+		self.config.handler.allow_downloads = True
 		self.config.fetcher = fetch.Fetcher(self.config.handler)
 
 		stream = tempfile.TemporaryFile()
@@ -78,14 +79,14 @@ class TestDownload(BaseTest):
 		self.child = None
 
 		trust.trust_db.watchers = []
-	
+
 	def tearDown(self):
 		BaseTest.tearDown(self)
 		if self.child is not None:
 			os.kill(self.child, signal.SIGTERM)
 			os.waitpid(self.child, 0)
 			self.child = None
-	
+
 	def testRejectKey(self):
 		with output_suppressed():
 			self.child = server.handle_requests('Hello', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B')
@@ -101,7 +102,7 @@ class TestDownload(BaseTest):
 				if "Not signed with a trusted key" not in str(policy.handler.ex):
 					raise ex
 				self.config.handler.ex = None
-	
+
 	def testRejectKeyXML(self):
 		with output_suppressed():
 			self.child = server.handle_requests('Hello.xml', '6FCF121BE2390E0B.gpg', '/key-info/key/DE937DD411906ACF7C263B396FCF121BE2390E0B')

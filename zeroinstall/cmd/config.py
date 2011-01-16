@@ -28,17 +28,22 @@ class String:
 class TimeInterval:
 	@staticmethod
 	def format(value):
+		def s(v):
+			if int(v) == v:
+				return str(int(v))
+			else:
+				return str(v)
 		value = float(value)
 		if value < 60:
-			return str(value) + "s"
+			return s(value) + "s"
 		value /= 60
 		if value < 60:
-			return str(value) + "m"
+			return s(value) + "m"
 		value /= 60
 		if value < 24:
-			return str(value) + "h"
+			return s(value) + "h"
 		value /= 24
-		return str(value) + "d"
+		return s(value) + "d"
 
 	@staticmethod
 	def parse(value):

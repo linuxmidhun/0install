@@ -3,6 +3,7 @@ import sys, tempfile, os, shutil, StringIO
 import unittest
 import logging
 import warnings
+from xml.dom import minidom
 warnings.filterwarnings("ignore", message = 'The CObject type')
 
 # Catch silly mistakes...
@@ -57,11 +58,17 @@ class DummyPackageKit:
 		pass
 
 class DummyHandler(handler.Handler):
-	__slots__ = ['ex', 'tb']
+	__slots__ = ['ex', 'tb', 'allow_downloads']
 
 	def __init__(self):
 		handler.Handler.__init__(self)
 		self.ex = None
+		self.allow_downloads = False
+
+	def get_download(self, url, force = False, hint = None, factory = None):
+		if self.allow_downloads:
+			return handler.Handler.get_download(self, url, force, hint, factory)
+		raise model.SafeException("DummyHandler: " + url)
 
 	def wait_for_blocker(self, blocker):
 		self.ex = None
@@ -76,6 +83,12 @@ class DummyHandler(handler.Handler):
 
 		#import traceback
 		#traceback.print_exc()
+
+class DummyKeyInfo:
+	def __init__(self, fpr):
+		self.fpr = fpr
+		self.info = [minidom.parseString('<item vote="bad"/>')]
+		self.blocker = None
 
 class TestFetcher:
 	def __init__(self, config):
@@ -108,6 +121,9 @@ class TestFetcher:
 			self.config.iface_cache._feeds[feed_url] = self.allowed_feed_downloads[feed_url]
 			del self.allowed_feed_downloads[feed_url]
 		return fake_download()
+
+	def fetch_key_info(self, fingerprint):
+		return DummyKeyInfo(fingerprint)
 
 class TestStores:
 	def __init__(self):

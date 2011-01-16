@@ -65,9 +65,10 @@ def main(command_args, config = None):
 
 	# The first non-option argument is the command name (or "help" if none is found).
 	command = None
-	for arg in command_args:
+	for i, arg in enumerate(command_args):
 		if not arg.startswith('-'):
 			command = arg
+			del command_args[i]
 			break
 		elif arg == '--':
 			break
@@ -93,7 +94,6 @@ def main(command_args, config = None):
 
 		cmd.add_options(parser)
 		(options, args) = parser.parse_args(command_args)
-		assert args[0] == command
 
 		if options.verbose:
 			logger = logging.getLogger()
@@ -103,8 +103,6 @@ def main(command_args, config = None):
 				logger.setLevel(logging.DEBUG)
 			import zeroinstall
 			logging.info(_("Running 0install %(version)s %(args)s; Python %(python_version)s"), {'version': zeroinstall.version, 'args': repr(command_args), 'python_version': sys.version})
-
-		args = args[1:]
 
 		if options.with_store:
 			from zeroinstall import zerostore

@@ -42,6 +42,7 @@ def handle(config, options, args):
 			old_selections = old_sels.selections
 
 	# Download in online mode to get the new values
+	config.network_use = model.network_full
 	options.offline = False
 	options.gui = old_gui
 	options.refresh = True

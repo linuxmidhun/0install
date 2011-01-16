@@ -18,8 +18,8 @@ if not my_dir:
 sys.argv.append('-v')
 
 suite_names = [f[:-3] for f in os.listdir(my_dir)
-		if f.startswith('testinstall') and f.endswith('.py')] #XXX
-#suite_names.remove('testall')
+		if f.startswith('test') and f.endswith('.py')]
+suite_names.remove('testall')
 suite_names.sort()
 
 alltests = unittest.TestSuite()
