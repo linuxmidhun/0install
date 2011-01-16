@@ -42,6 +42,9 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 	@return: the selected versions, or None if the user cancels
 	@rtype: L{selections.Selections} | None
 	"""
+	if options.offline:
+		config.network_use = model.network_offline
+
 	# Try to load it as a feed. If it is a feed, it'll get cached. If not, it's a
 	# selections document and we return immediately.
 	maybe_selections = config.iface_cache.get_feed(iface_uri, selections_ok = True)
@@ -57,9 +60,6 @@ def get_selections(config, options, iface_uri, select_only, download_only, test_
 	r.parse_options(options)
 
 	policy = Policy(config = config, requirements = r)
-
-	if options.offline:
-		config.network_use = model.network_offline
 
 	# Note that need_download() triggers a solve
 	if options.refresh or options.gui:

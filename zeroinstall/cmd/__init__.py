@@ -112,7 +112,7 @@ def main(command_args, config = None):
 				config.stores.stores.append(zerostore.Store(os.path.abspath(x)))
 			logging.info(_("Stores search path is now %s"), config.stores.stores)
 
-		h.dry_run = bool(options.dry_run)
+		config.handler.dry_run = bool(options.dry_run)
 
 		cmd.handle(config, options, args)
 	except UsageError:

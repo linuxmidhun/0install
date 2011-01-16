@@ -12,9 +12,9 @@ os.environ['LANGUAGE'] = 'C'
 sys.path.insert(0, '..')
 from zeroinstall.injector import qdom
 from zeroinstall.injector import iface_cache, download, distro, model, handler, policy, reader
-from zeroinstall.zerostore import Store, Stores; Store._add_with_helper = lambda *unused: False
+from zeroinstall.zerostore import NotStored, Store, Stores; Store._add_with_helper = lambda *unused: False
 from zeroinstall import support, helpers
-from zeroinstall.support import basedir
+from zeroinstall.support import basedir, tasks
 
 dpkgdir = os.path.join(os.path.dirname(__file__), 'dpkg')
 
@@ -78,8 +78,49 @@ class DummyHandler(handler.Handler):
 		#traceback.print_exc()
 
 class TestFetcher:
+	def __init__(self, config):
+		self.allowed_downloads = set()
+		self.allowed_feed_downloads = {}
+		self.config = config
+
+	def allow_download(self, digest):
+		assert isinstance(self.config.stores, TestStores)
+		self.allowed_downloads.add(digest)
+
+	def allow_feed_download(self, url, feed):
+		self.allowed_feed_downloads[url] = feed
+
 	def download_impls(self, impls, stores):
-		assert impls == [], impls
+		@tasks.async
+		def fake_download():
+			yield
+			for impl in impls:
+				assert impl.id in self.allowed_downloads, impl
+				self.allowed_downloads.remove(impl.id)
+				self.config.stores.add_fake(impl.id)
+		return fake_download()
+
+	def download_and_import_feed(self, feed_url, iface_cache, force = False):
+		@tasks.async
+		def fake_download():
+			yield
+			assert feed_url in self.allowed_feed_downloads, feed_url
+			self.config.iface_cache._feeds[feed_url] = self.allowed_feed_downloads[feed_url]
+			del self.allowed_feed_downloads[feed_url]
+		return fake_download()
+
+class TestStores:
+	def __init__(self):
+		self.fake_impls = set()
+
+	def add_fake(self, digest):
+		self.fake_impls.add(digest)
+
+	def lookup_any(self, digests):
+		for d in digests:
+			if d in self.fake_impls:
+				return '/fake_store/' + d
+		raise NotStored()
 
 class TestConfig:
 	freshness = 0
@@ -90,7 +131,7 @@ class TestConfig:
 		self.iface_cache = iface_cache.IfaceCache()
 		self.handler = DummyHandler()
 		self.stores = Stores()
-		self.fetcher = TestFetcher()
+		self.fetcher = TestFetcher(self)
 
 class BaseTest(unittest.TestCase):
 	def setUp(self):

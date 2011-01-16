@@ -7,6 +7,7 @@ Load and save a set of chosen implementations.
 # See the README file for details, or visit http://0install.net.
 
 from zeroinstall import _
+from zeroinstall.injector import model
 from zeroinstall.injector.policy import Policy, get_deprecated_singleton_config
 from zeroinstall.injector.model import process_binding, process_depends, binding_names, Command
 from zeroinstall.injector.namespaces import XMLNS_IFACE
@@ -270,6 +271,10 @@ class Selections(object):
 					needed_downloads.append(sel)
 		if not needed_downloads:
 			return
+
+		if config.network_use == model.network_offline:
+			from zeroinstall import NeedDownload
+			raise NeedDownload(', '.join([str(x) for x in needed_downloads]))
 
 		@tasks.async
 		def download():
