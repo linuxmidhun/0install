@@ -530,6 +530,28 @@ class RenameStep(RetrievalMethod):
 		self.source = source
 		self.dest = dest
 
+class RemoveStep(RetrievalMethod):
+	"""A RemoveStep provides a way to delete a path within an implementation."""
+	__slots__ = ['path']
+
+	def __init__(self, path):
+		self.path = path
+
+class AddDirectoryStep(RetrievalMethod):
+	"""An AddDirectoryStep provides a way to add a new (empty) directory within an implementation."""
+	__slots__ = ['path']
+
+	def __init__(self, path):
+		self.path = path
+
+class AddTopLevelStep(RetrievalMethod):
+	"""An AddTopLevelStep provides a way to move all existing contents of
+	a recipe down into a new top-level directory."""
+	__slots__ = ['dirname']
+
+	def __init__(self, dirname):
+		self.dirname = dirname
+
 class Recipe(RetrievalMethod):
 	"""Get an implementation by following a series of steps.
 	@ivar size: the combined download sizes from all the steps
@@ -1171,6 +1193,21 @@ class ZeroInstallFeed(object):
 							if not dest:
 								raise InvalidInterface(_("Missing dest attribute on <rename>"))
 							recipe.steps.append(RenameStep(source=source, dest=dest))
+						elif recipe_step.uri == XMLNS_IFACE and recipe_step.name == 'remove':
+							path = recipe_step.getAttribute('path')
+							if not path:
+								raise InvalidInterface(_("Missing path attribute on <remove>"))
+							recipe.steps.append(RemoveStep(path=path))
+						elif recipe_step.uri == XMLNS_IFACE and recipe_step.name == 'add-directory':
+							path = recipe_step.getAttribute('path')
+							if not path:
+								raise InvalidInterface(_("Missing path attribute on <add-directory>"))
+							recipe.steps.append(AddDirectoryStep(path=path))
+						elif recipe_step.uri == XMLNS_IFACE and recipe_step.name == 'add-toplevel':
+							dirname = recipe_step.getAttribute('dir')
+							if not dirname:
+								raise InvalidInterface(_("Missing dir attribute on <add-toplevel>"))
+							recipe.steps.append(AddTopLevelStep(dirname=dirname))
 						else:
 							logger.info(_("Unknown step '%s' in recipe; skipping recipe"), recipe_step.name)
 							break

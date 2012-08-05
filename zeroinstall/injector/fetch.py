@@ -661,6 +661,54 @@ class RenameStepRunner(StepRunner):
 		dest = native_path_within_base(basedir, self.stepdata.dest)
 		os.rename(source, dest)
 
+class RemoveStepRunner(StepRunner):
+	"""A step runner for the <remove> step.
+	@since: 1.11"""
+
+	model_type = model.RemoveStep
+
+	def apply(self, basedir):
+		path = native_path_within_base(basedir, self.stepdata.path)
+		support.ro_rmtree(path)
+
+class AddDirectoryStepRunner(StepRunner):
+	"""A step runner for the <add-directory> step.
+	@since: 1.11"""
+
+	model_type = model.AddDirectoryStep
+
+	def apply(self, basedir):
+		path = native_path_within_base(basedir, self.stepdata.path)
+		os.makedirs(path)
+
+class AddTopLevelStepRunner(StepRunner):
+	"""A step runner for the <add-toplevel> step.
+	@since: 1.11"""
+
+	model_type = model.AddTopLevelStep
+
+	def apply(self, basedir):
+		dirname = self.stepdata.dirname
+		assert os.path.sep not in dirname
+
+		items = os.listdir(basedir)
+
+		import tempfile
+		tmp = tempfile.mkdtemp()
+		try:
+			# first, move all contents into a tempdir (to avoid name conflicts)
+			for item in items:
+				os.rename(os.path.join(basedir, item), os.path.join(tmp, item))
+
+			# create new directory in now-empty {basedir}
+			os.mkdir(os.path.join(basedir, dirname))
+
+			# now, move all contents back inside {basedir}/{dirname}
+			for item in items:
+				os.rename(os.path.join(tmp, item), os.path.join(basedir, dirname, item))
+		finally:
+			support.ro_rmtree(tmp)
+
 class DownloadStepRunner(StepRunner):
 	"""A step runner for the <archive> step.
 	@since: 1.10"""

@@ -394,6 +394,52 @@ class TestDownload(BaseTest):
 			assert not os.path.exists(os.path.join(path, 'HelloWorld'))
 			assert not os.path.exists(os.path.join(path, 'HelloUniverse', 'main'))
 
+	def testRemoveFile(self):
+		with output_suppressed():
+			run_server(('HelloWorld.tar.bz2',))
+			requirements = Requirements(os.path.abspath('RecipeRemove.xml'))
+			requirements.command = None
+			driver = Driver(requirements = requirements, config = self.config)
+			driver_download(driver)
+			digests = driver.solver.selections[requirements.interface_uri].digests
+			path = self.config.stores.lookup_any(digests)
+			assert os.path.exists(os.path.join(path, 'HelloWorld'))
+			assert not os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
+
+	def testRemoveDir(self):
+		with output_suppressed():
+			run_server(('HelloWorld.tar.bz2',))
+			requirements = Requirements(os.path.abspath('RecipeRemoveDir.xml'))
+			requirements.command = None
+			driver = Driver(requirements = requirements, config = self.config)
+			driver_download(driver)
+			digests = driver.solver.selections[requirements.interface_uri].digests
+			path = self.config.stores.lookup_any(digests)
+			assert not os.path.exists(os.path.join(path, 'HelloWorld'))
+
+	def testAddDirectory(self):
+		with output_suppressed():
+			run_server(('HelloWorld.tar.bz2',))
+			requirements = Requirements(os.path.abspath('RecipeAddDirectory.xml'))
+			requirements.command = None
+			driver = Driver(requirements = requirements, config = self.config)
+			driver_download(driver)
+			digests = driver.solver.selections[requirements.interface_uri].digests
+			path = self.config.stores.lookup_any(digests)
+			assert os.path.exists(os.path.join(path, 'HelloWorld', 'bin', 'main'))
+			assert not os.path.exists(os.path.join(path, 'HelloWorld', 'main'))
+
+	def testAddTopLevel(self):
+		with output_suppressed():
+			run_server(('HelloWorld.tar.bz2',))
+			requirements = Requirements(os.path.abspath('RecipeAddTopLevel.xml'))
+			requirements.command = None
+			driver = Driver(requirements = requirements, config = self.config)
+			driver_download(driver)
+			digests = driver.solver.selections[requirements.interface_uri].digests
+			path = self.config.stores.lookup_any(digests)
+			assert os.path.exists(os.path.join(path, 'HelloWorld', 'HelloWorld', 'main'))
+
 	def testSymlink(self):
 		old_out = sys.stdout
 		try:
