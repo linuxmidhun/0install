@@ -663,7 +663,7 @@ class RenameStepRunner(StepRunner):
 
 class RemoveStepRunner(StepRunner):
 	"""A step runner for the <remove> step.
-	@since: 1.11"""
+	@since: 1.13"""
 
 	model_type = model.RemoveStep
 
@@ -673,7 +673,7 @@ class RemoveStepRunner(StepRunner):
 
 class AddDirectoryStepRunner(StepRunner):
 	"""A step runner for the <add-directory> step.
-	@since: 1.11"""
+	@since: 1.13"""
 
 	model_type = model.AddDirectoryStep
 
@@ -683,7 +683,7 @@ class AddDirectoryStepRunner(StepRunner):
 
 class AddTopLevelStepRunner(StepRunner):
 	"""A step runner for the <add-toplevel> step.
-	@since: 1.11"""
+	@since: 1.13"""
 
 	model_type = model.AddTopLevelStep
 
@@ -734,7 +734,7 @@ class DownloadStepRunner(StepRunner):
 def native_path_within_base(base, crossplatform_path):
 	"""Takes a cross-platform relative path (i.e using forward slashes, even on windows)
 	and returns the absolute, platform-native version of the path.
-	If the path does not resolve to a location within `base`, a SafeError is raised.
+	@raise SafeException: if the path does not resolve to a location within `base`
 	@since: 1.10
 	"""
 	assert os.path.isabs(base)
