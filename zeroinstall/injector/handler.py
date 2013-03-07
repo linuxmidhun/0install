@@ -186,7 +186,7 @@ class Handler(object):
 		@since: 0.25"""
 		import logging
 		logger.warning("%s", str(exception) or type(exception),
-				exc_info = (exception, None, tb) if logger.isEnabledFor(logging.INFO) else None)
+				exc_info = (exception, exception, tb) if logger.isEnabledFor(logging.INFO) else None)
 	
 class ConsoleHandler(Handler):
 	"""A Handler that displays progress on stdout (a tty).
@@ -200,7 +200,7 @@ class ConsoleHandler(Handler):
 	original_print = None
 
 	def downloads_changed(self):
-		from zeroinstall import gobject
+		from zeroinstall.support.tasks import _loop
 		if self.monitored_downloads and self.update is None:
 			if self.screen_width is None:
 				try:
@@ -213,20 +213,20 @@ class ConsoleHandler(Handler):
 			self.show_progress()
 			self.original_print = print
 			builtins.print = self.print
-			self.update = gobject.timeout_add(200, self.show_progress)
+			self.update = tasks._loop.call_repeatedly(0.2, self.show_progress)
 		elif len(self.monitored_downloads) == 0:
 			if self.update:
-				gobject.source_remove(self.update)
+				self.update.cancel()
 				self.update = None
 				builtins.print = self.original_print
 				self.original_print = None
 				self.clear_display()
 
 	def show_progress(self):
-		if not self.monitored_downloads: return True
+		if not self.monitored_downloads: return
 		urls = [(dl.url, dl) for dl in self.monitored_downloads]
 
-		if self.disable_progress: return True
+		if self.disable_progress: return
 
 		screen_width = self.screen_width - 2
 		item_width = max(16, screen_width // len(self.monitored_downloads))
@@ -256,7 +256,7 @@ class ConsoleHandler(Handler):
 		self.last_msg_len = len(msg)
 		sys.stdout.flush()
 
-		return True
+		return
 
 	def clear_display(self):
 		if self.last_msg_len != None:

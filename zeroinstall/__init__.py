@@ -16,15 +16,7 @@ The Python implementation of the Zero Install injector is divided into five sub-
 version = '2.0'
 
 import sys, logging
-try:
-	if sys.version_info[0] > 2:
-		from gi.repository import GObject as gobject
-	else:
-		import gobject
-except ImportError:
-	pass
-else:
-	gobject.threads_init()
+# XXX GObject!
 
 logger = logging.getLogger('0install')
 
