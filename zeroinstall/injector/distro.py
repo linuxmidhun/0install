@@ -234,22 +234,6 @@ class Distribution(object):
 			impl.upstream_stability = model.packaged
 			impl.machine = host_machine	# (hopefully)
 			feed.implementations[impl_id] = impl
-		elif master_feed.url == 'http://repo.roscidus.com/python/python-gobject' and os.name != "nt":
-			# Likewise, we know that there is a native python-gobject available for our Python
-			from zeroinstall import gobject
-			impl_id = 'package:host:python-gobject:' + '.'.join(str(x) for x in gobject.pygobject_version)
-			assert impl_id not in feed.implementations
-			impl = model.DistributionImplementation(feed, impl_id, self, distro_name = 'host')
-			impl.installed = True
-			impl.version = [list(gobject.pygobject_version)]
-			impl.upstream_stability = model.packaged
-			impl.machine = host_machine	# (hopefully)
-
-			# Requires our version of Python too
-			restriction_element = qdom.Element(namespaces.XMLNS_IFACE, 'restricts', {'interface': _PYTHON_URI, 'distribution': 'host'})
-			impl.requires.append(model.process_depends(restriction_element, None))
-
-			feed.implementations[impl_id] = impl
 
 		return feed
 
