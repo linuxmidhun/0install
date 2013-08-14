@@ -111,11 +111,19 @@ class TestSelections(BaseTest):
 
 		# Add a newer implementation and try again
 		feed = self.config.iface_cache.get_feed(iface)
-		impl = model.ZeroInstallImplementation(feed, "foo bar=123", local_path = None)
-		impl.version = model.parse_version('1.0')
-		impl.commands["run"] = model.Command(qdom.Element(namespaces.XMLNS_IFACE, 'command', {'path': 'dummy', 'name': 'run'}), None)
-		impl.add_download_source('http://localhost/bar.tgz', 1000, None)
-		feed.implementations = {impl.id: impl}
+
+		impl = qdom.Element(namespaces.XMLNS_IFACE, "implementation", attrs = {
+			"id": "foo bar=123",
+			"version": "1.0",
+		})
+		impl.childNodes = [
+			qdom.Element(namespaces.XMLNS_IFACE, 'command', {'path': 'dummy', 'name': 'run'}),
+			qdom.Element(namespaces.XMLNS_IFACE, 'archive', {'href': 'http://localhost/bar.tgz', 'size': '1000'}),
+		]
+		feed.qdom.childNodes.append(impl)
+		feed = model.ZeroInstallFeed(feed.qdom, feed.url)
+		self.config.iface_cache._feeds[feed.url] = feed
+
 		assert driver.need_download()
 		assert driver.solver.ready, driver.solver.get_failure_reason()
 		s1 = driver.solver.selections
@@ -153,8 +161,7 @@ class TestSelections(BaseTest):
 		assert impl.id == 'c'
 
 		assert s2.commands[0].qdom.attrs['http://custom attr'] == 'namespaced'
-		custom_element = s2.commands[0].qdom.childNodes[0]
-		assert custom_element.name == 'child'
+		assert any(custom_element.name == 'child' for custom_element in s2.commands[0].qdom.childNodes)
 
 		dep_impl = s2.selections[dep_impl_uri]
 		assert dep_impl.id == 'sha1=256'

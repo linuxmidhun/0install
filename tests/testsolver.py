@@ -58,7 +58,7 @@ class TestSolver(BaseTest):
 
 	def testDetails(self):
 		iface_cache = self.config.iface_cache
-		s = solver.DefaultSolver(self.config)
+		s = solver.SATSolver(self.config)
 
 		foo_binary_uri = 'http://foo/Binary.xml'
 		foo = iface_cache.get_interface(foo_binary_uri)
@@ -132,10 +132,10 @@ class TestSolver(BaseTest):
 		s.solve('http://foo/Recursive.xml', binary_arch)
 		assert s.ready
 
-		foo_impls = iface_cache.get_feed(foo.uri).implementations
-
-		assert len(s.details) == 1
-		assert s.details[foo] == [(foo_impls['sha1=abc'], None)]
+		assert s.selections.selections[foo.uri].id == 'sha1=abc'
+		#foo_impls = iface_cache.get_feed(foo.uri).implementations
+		#assert len(s.details) == 1
+		#assert s.details[foo] == [(foo_impls['sha1=abc'], None)]
 		
 	def testMultiArch(self):
 		iface_cache = self.config.iface_cache
@@ -217,7 +217,11 @@ class TestSolver(BaseTest):
 				break
 			impl = s.selections[iface]
 			selected.append(impl.get_version() + ' ' + impl.arch)
-			impl.arch = 'Foo-odd'		# prevent reselection
+
+			feed = iface_cache.get_feed(ranking)
+			feed_impl = feed.implementations[impl.id]
+			feed_impl.arch = 'Foo-odd'		# prevent reselection (OCaml)
+			feed_impl.qdom.attrs['arch'] = feed_impl.arch
 		self.assertEqual([
 			'0.2 Linux-i386',	# poor arch, but newest version
 			'0.1 Linux-x86_64',	# 64-bit is best match for host arch
@@ -287,7 +291,7 @@ class TestSolver(BaseTest):
 			r = Requirements(top_uri)
 			r.os = "Windows"
 			r.cpu = "x86_64"
-			s = solver.DefaultSolver(self.config)
+			s = solver.SATSolver(self.config)
 			s.solve_for(r)
 			assert not s.ready, s.selections.selections
 
@@ -586,6 +590,8 @@ class TestSolver(BaseTest):
 			self.assertEqual('sha1=13', s.selections[iface].id)
 
 			def check(target_arch, langs, expected):
+				os.environ['LC_ALL'] = langs[0]
+				os.environ['LANGUAGE'] = ' '.join(langs)
 				s.langs = langs
 				binary_arch = arch.get_architecture(None, target_arch)
 				s.solve('http://foo/Langs.xml', binary_arch)
@@ -604,6 +610,8 @@ class TestSolver(BaseTest):
 			check('arch_7', ['bn'], 'sha1=17')
 			check('arch_7', ['bn_IN'], 'sha1=18')
 		finally:
+			os.environ['LC_ALL'] = 'C'
+			os.environ['LANGUAGE'] = 'C'
 			locale.setlocale(locale.LC_ALL, '')
 
 	def testDecideBug(self):

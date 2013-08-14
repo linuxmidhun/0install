@@ -276,6 +276,9 @@ class VersionRestriction(Restriction):
 		@rtype: bool"""
 		return impl.version == self.version
 
+	def get_expr(self):
+		return format_version(self.version)
+
 	def __str__(self):
 		return _("version = %s") % format_version(self.version)
 
@@ -328,6 +331,9 @@ class VersionExpressionRestriction(Restriction):
 		"""@type impl: L{Implementation}
 		@rtype: bool"""
 		return self._test_fn(impl.version)
+
+	def get_expr(self):
+		return self.expr
 
 	def __str__(self):
 		"""@rtype: str"""
@@ -1165,7 +1171,7 @@ class ZeroInstallFeed(object):
 	"""
 	# _main is deprecated
 	__slots__ = ['url', 'implementations', 'name', 'descriptions', 'first_description', 'summaries', 'first_summary', '_package_implementations',
-		     'last_checked', 'last_modified', 'feeds', 'feed_for', 'metadata', 'local_path']
+		     'last_checked', 'last_modified', 'feeds', 'feed_for', 'metadata', 'local_path', 'qdom']
 
 	def __init__(self, feed_element, local_path = None, distro = None):
 		"""Create a feed object from a DOM.
@@ -1173,6 +1179,7 @@ class ZeroInstallFeed(object):
 		@type feed_element: L{qdom.Element}
 		@param local_path: the pathname of this local feed, or None for remote feeds
 		@type local_path: str | None"""
+		self.qdom = feed_element
 		self.local_path = local_path
 		self.implementations = {}
 		self.name = None

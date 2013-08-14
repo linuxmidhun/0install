@@ -7,7 +7,7 @@ sys.path.insert(0, '..')
 from zeroinstall.injector import model, arch, qdom
 from zeroinstall.injector.namespaces import XMLNS_IFACE
 
-from zeroinstall.injector.solver import SATSolver as Solver
+from zeroinstall.injector.solver import OCamlSolver as Solver
 from zeroinstall.injector import sat
 
 import logging
@@ -61,6 +61,7 @@ class Program:
 				attrs['arch'] = version.arch
 			impl = child(root, 'implementation', attrs)
 			child(impl, 'manifest-digest', {'sha1new': '1234'})
+			child(impl, 'archive', {'href': 'http://example.com/archive.tgz', 'size':'100'})
 			for lib, min_v, max_v in version.requires:
 				req = child(impl, 'requires', {'interface': uri_prefix + lib})
 				child(req, 'version', {
@@ -133,7 +134,7 @@ def assertSelection(expected, repo):
 
 	class TestConfig:
 		help_with_testing = False
-		network_use = model.network_offline
+		network_use = model.network_minimal
 		stores = stores
 		iface_cache = cache
 

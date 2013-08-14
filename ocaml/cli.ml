@@ -214,6 +214,8 @@ let command_options = [
   ("list-feeds", ([], "URI"));
   ("man", ([], "NAME"));
   ("digest", (digest_options, "DIRECTORY | ARCHIVE [EXTRACT]"));
+
+  ("api", ([], "(internal)"));
 ]
 
 let set_of_option_names opts =

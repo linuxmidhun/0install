@@ -74,6 +74,7 @@ let main (system:system) : unit =
         in
         try
           match options.args with
+          | ["api"] -> Api.handle options
           | ("run" :: run_args) -> handle_run options run_args
           | ("select" :: args) -> Select.handle options args
           | ("show" :: args) -> Show.handle options args

@@ -6,11 +6,12 @@ Chooses a set of components to make a running program.
 # See the README file for details, or visit http://0install.net.
 
 from zeroinstall import _, logger
-import locale
+from xml.dom import minidom
+import locale, os
 import collections
 
 from zeroinstall.injector.reader import MissingLocalFeed
-from zeroinstall.injector import model, sat, selections, arch, qdom
+from zeroinstall.injector import model, sat, selections, arch, qdom, namespaces
 
 class CommandInfo(object):
 	def __init__(self, name, command, impl, arch):
@@ -1124,4 +1125,151 @@ class SATSolver(Solver):
 		else:
 			return _("If {wanted} were the only option, the best available solution wouldn't use it.").format(wanted = wanted) + changes_text
 
-DefaultSolver = SATSolver
+def send_xml(stream, qdom_root):
+	impl = minidom.getDOMImplementation()
+	doc = impl.createDocument(namespaces.XMLNS_IFACE, 'root', None)
+	prefixes = qdom.Prefixes(qdom_root.uri)
+	root = qdom_root.toDOM(doc, prefixes)
+	for ns, prefix in prefixes.prefixes.items():
+		root.setAttributeNS(minidom.XMLNS_NAMESPACE, 'xmlns:' + prefix, ns)
+	root.setAttributeNS(minidom.XMLNS_NAMESPACE, 'xmlns', namespaces.XMLNS_IFACE)
+	#doc.appendChild(root)
+	xml = root.toxml(encoding = 'utf-8') + b'\n'
+	stream.write((str(len(xml)) + '\n').encode('utf-8'))
+	stream.write(xml)
+	stream.flush()
+
+class OCamlSolver(Solver):
+	python_solver = None
+
+	def __init__(self, config, extra_restrictions = None):
+		Solver.__init__(self)
+		self.config = config
+		self.extra_restrictions = extra_restrictions or {}
+
+		# By default, prefer the current locale's language first and English second
+		self.langs = [locale.getlocale()[0] or 'en', 'en']
+
+	def set_langs(self, langs):
+		"""Set the preferred languages.
+		@param langs: languages (and regions), first choice first
+		@type langs: [str]"""
+		# _lang_ranks is a map from locale string to score (higher is better)
+		_lang_ranks = {}
+		score = 0
+		i = len(langs)
+		# (is there are duplicates, the first occurance takes precedence)
+		while i > 0:
+			i -= 1
+			lang = langs[i].replace('_', '-')
+			_lang_ranks[lang.split('-')[0]] = score
+			_lang_ranks[lang] = score + 1
+			score += 2
+		self._langs = langs
+		self._lang_ranks = _lang_ranks
+
+	def solve(self, root_interface, root_arch, command_name = 'run', closest_match = False):
+		from zeroinstall.injector import requirements
+		r = requirements.Requirements(root_interface)
+		if 'src' in root_arch.machine_ranks:
+			root_arch = root_arch.child_arch
+			r.source = True
+		r.command = command_name
+		r.os = min((v, k) for k, v in root_arch.os_ranks.items())[1]
+		r.cpu = min((v, k) for k, v in root_arch.machine_ranks.items())[1]
+		self.solve_for(r)
+
+	def solve_for(self, requirements):
+		for k, v in self.extra_restrictions.items():
+			assert len(v) < 2, v
+			if len(v) == 1:
+				requirements.extra_restrictions[k.uri] = v[0].get_expr()
+
+		self.r = requirements
+		import json, subprocess, io
+		if self.config.network_use == model.network_offline:
+			args = ['--offline']
+		else:
+			args = []
+
+		child = subprocess.Popen(['/home/tal/Projects/zero-install/0install/ocaml/0install', 'api'] + args, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+		j = json.dumps(dict((key, getattr(requirements, key)) for key in requirements.__slots__)).encode('utf-8')
+		child.stdin.write(("%s\n" % len(j)).encode('utf-8'))
+		child.stdin.write(j)
+		child.stdin.flush()
+
+		while True:
+			resp = child.stdout.readline().decode('utf-8').strip()
+			if resp in ('SUCCESS', 'FAIL'): break
+			assert resp == 'FEED', resp
+			url = child.stdout.readline().decode('utf-8').strip()
+			feed = self.config.iface_cache.get_feed(url)
+			if feed:
+				send_xml(child.stdin, feed.qdom)
+			else:
+				send_xml(child.stdin, qdom.Element(namespaces.XMLNS_IFACE, "missing", {}))
+
+		self.ready = (resp != 'FAIL')
+		l = child.stdout.readline()
+		self.xml = child.stdout.read(int(l))
+
+		l = child.stdout.readline()
+		self.feeds_used = set(json.loads(child.stdout.read(int(l)).decode('utf-8')))
+
+		child.stdin.close()
+		child.stdout.close()
+		child.wait()
+
+		try:
+			root = qdom.parse(io.BytesIO(self.xml))
+		except:
+			raise Exception(self.xml)
+
+		sels = selections.Selections(None)
+		sels.interface = root.attrs['interface']
+		sels.command = root.attrs.get('command', None)
+
+		for node in root.childNodes:
+			if node.name == 'selection':
+				iface = node.attrs['interface']
+				impl_id = node.attrs.get('id', None)
+				if impl_id is None:
+					sels.selections[iface] = None
+					continue
+
+				feed_url = node.attrs.get('from-feed') or iface
+
+				try:
+					feed = self.config.iface_cache.get_feed(feed_url)
+					if feed.local_path:
+						local_dir = os.path.dirname(feed.local_path)
+						if impl_id.startswith('/') or impl_id.startswith('.'):
+							impl_id = os.path.abspath(os.path.join(local_dir, impl_id))
+					impl = feed.implementations[impl_id]
+				except:
+					logger.warning("get: %s %s", feed_url, impl_id)
+					logger.warning("from: %s", feed.implementations if feed else "(missing feed)")
+					raise
+				deps = [model.process_depends(dep_elem, None) for dep_elem in node.childNodes if dep_elem.name in model._dependency_names]
+
+				sel = selections.ImplSelection(iface, impl, deps)
+				sels.selections[iface] = sel
+
+				for command_elem in node.childNodes:
+					if command_elem.name != 'command': continue
+					name = command_elem.attrs['name']
+
+					command = impl.commands[name]
+					sel._used_commands[name] = model.Command(command_elem, local_dir = None)
+
+		self.selections = sels
+
+	def get_failure_reason(self):
+		# Fall back to Python
+		if self.python_solver is None:
+			self.python_solver = SATSolver(self.config, self.extra_restrictions)
+			self.python_solver.solve_for(self.r)
+		return self.python_solver.get_failure_reason()
+
+#DefaultSolver = SATSolver
+DefaultSolver = OCamlSolver

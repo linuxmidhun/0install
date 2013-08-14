@@ -68,7 +68,8 @@ class TestDriver(BaseTest):
 			assert driver.need_download()
 			download_and_execute(driver, [])
 		except model.SafeException as ex:
-			assert "Use '_' not '=' for new algorithms, in unknown=123" in str(ex), ex
+			assert ("Use '_' not '=' for new algorithms, in unknown=123" in str(ex) or		# Python
+			        "No <manifest-digest> given for 'Foo' version 1.0" in str(ex)), ex		# OCaml
 	
 	def testDownload(self):
 		tmp = tempfile.NamedTemporaryFile(mode = 'wt')
@@ -391,13 +392,15 @@ class TestDriver(BaseTest):
 
 		dep = driver.solver.selections[foo_iface].dependencies['http://bar']
 		assert len(dep.restrictions) == 1
-		restriction = dep.restrictions[0]
 
-		restriction.before = model.parse_version('2.0')
+		restriction = self.config.iface_cache.get_feed(foo_iface_uri).qdom.childNodes[3].childNodes[0].childNodes[0]
+		assert restriction.name == 'version', restriction.name
+
+		restriction.attrs['before'] = '2.0'
 		recalculate(driver)
 		assert driver.solver.selections[bar_iface].id == 'sha1=100'
 
-		restriction.not_before = model.parse_version('1.5')
+		restriction.attrs['not-before'] = '1.5'
 		recalculate(driver)
 		assert driver.solver.selections[bar_iface].id == 'sha1=150'
 
