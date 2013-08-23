@@ -196,6 +196,7 @@ type scope = {
 class type result =
   object
     method get_selections : unit -> Qdom.element
+    method get_details : (scope * S.sat_problem * Impl_provider.impl_provider * (General.iface_uri * bool, impl_candidates) cache)
   end
 
 (** Create a <selections> document from the result of a solve. *)
@@ -384,7 +385,7 @@ let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~c
         List.iter require_command dep.Feed.dep_required_commands;
 
         (* Restrictions on the candidates *)
-        let meets_restriction impl = List.for_all (fun (_name, test) -> test impl) dep.Feed.dep_restrictions in
+        let meets_restriction impl = List.for_all (fun r -> r#meets_restriction impl) dep.Feed.dep_restrictions in
         let candidates = impl_cache#lookup @@ (dep.Feed.dep_iface, false) in
         let (pass, fail) = candidates#partition meets_restriction in
 
@@ -411,7 +412,7 @@ let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~c
 
   (* Add the implementations of an interface to the cache (called the first time we visit it). *)
   and add_impls_to_cache (iface_uri, source) =
-    let {Impl_provider.replacement; Impl_provider.impls} =
+    let {Impl_provider.replacement; Impl_provider.impls; Impl_provider.rejects = _} =
       impl_provider#get_implementations root_scope.scope_filter iface_uri ~source in
     (* log_warning "Adding %d impls for %s" (List.length impls) iface_uri; *)
     let matching_impls = maybe_add_dummy @@ impls in
@@ -556,13 +557,14 @@ let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~c
       Some (
       object (_ : result)
         method get_selections () = get_selections sat dep_in_use root_req impl_cache command_cache
+
+        method get_details =
+          if closest_match then
+            (root_scope, sat, impl_provider, impl_cache)
+          else
+            failwith "Can't diagnostic details: solve didn't fail!"
       end
   )
-
-let make_user_restriction expr =
-  let test_version = Versions.parse_expr expr in
-  let test impl = test_version impl.Feed.parsed_version in
-  (expr, test)
 
 let solve_for config feed_provider requirements =
   try
@@ -588,7 +590,7 @@ let solve_for config feed_provider requirements =
 
     let open Impl_provider in
     let scope_filter = {
-      extra_restrictions = StringMap.map make_user_restriction extra_restrictions;
+      extra_restrictions = StringMap.map Feed.make_version_restriction extra_restrictions;
       os_ranks = Arch.get_os_ranks os;
       machine_ranks = Arch.get_machine_ranks ~multiarch machine;
       languages = Support.Locale.get_langs config.system;
