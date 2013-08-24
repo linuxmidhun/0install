@@ -159,7 +159,7 @@ let get_selections options ~refresh reqs mode =
         log_info "Quick solve failed; can't select without updating feeds";
         if use_ocaml_solver then (
           print_endline "Quick solve failed (stopped for debugging):";
-          prerr_string @@ Zeroinstall.Diagnostics.get_failure_reason results;
+          prerr_string @@ Zeroinstall.Diagnostics.get_failure_reason config results;
           raise (System_exit 1);
         ) else (
           select_with_refresh()

@@ -196,7 +196,8 @@ type scope = {
 class type result =
   object
     method get_selections : unit -> Qdom.element
-    method get_details : (scope * S.sat_problem * Impl_provider.impl_provider * (General.iface_uri * bool, impl_candidates) cache)
+    method get_details : (scope * S.sat_problem * Impl_provider.impl_provider *
+                          (General.iface_uri * bool, impl_candidates) cache * search_key)
   end
 
 (** Create a <selections> document from the result of a solve. *)
@@ -316,7 +317,7 @@ let get_selections sat dep_in_use root_req impl_cache command_cache =
 (* [closest_match] is used internally. It adds a lowest-ranked
    (but valid) implementation to every interface, so we can always
    select something. Useful for diagnostics. *)
-let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~closest_match =
+let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~closest_match =
   (* The basic plan is this:
      1. Scan the root interface and all dependencies recursively, building up a SAT problem.
      2. Solve the SAT problem. Whenever there are multiple options, try the most preferred one first.
@@ -385,9 +386,10 @@ let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~c
         List.iter require_command dep.Feed.dep_required_commands;
 
         (* Restrictions on the candidates *)
-        let meets_restriction impl = List.for_all (fun r -> r#meets_restriction impl) dep.Feed.dep_restrictions in
+        let meets_restriction impl r :bool = impl.Feed.parsed_version = Versions.dummy || r#meets_restriction impl in
+        let meets_restrictions impl = List.for_all (meets_restriction impl) dep.Feed.dep_restrictions in
         let candidates = impl_cache#lookup @@ (dep.Feed.dep_iface, false) in
-        let (pass, fail) = candidates#partition meets_restriction in
+        let (pass, fail) = candidates#partition meets_restrictions in
 
         if essential then (
           (*
@@ -515,6 +517,9 @@ let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~c
         None    (* Break cycles *)
       ) else (
         Hashtbl.add seen req true;
+        let () = match req with
+          | ReqCommand (command, iface, _source) -> log_warning "check %s %s" iface command
+          | ReqIface (iface, _source) -> log_warning "check %s" iface in
         let candidates = lookup req in
         match candidates#get_state sat with
         | Unselected -> None
@@ -560,51 +565,55 @@ let solve_for (impl_provider:Impl_provider.impl_provider) root_scope root_req ~c
 
         method get_details =
           if closest_match then
-            (root_scope, sat, impl_provider, impl_cache)
+            (root_scope, sat, impl_provider, impl_cache, root_req)
           else
             failwith "Can't diagnostic details: solve didn't fail!"
       end
   )
 
+let get_root_requirements config requirements =
+  let open Requirements in
+  let {
+    command; interface_uri; source;
+    extra_restrictions; os; cpu;
+    message = _;
+  } = requirements in
+
+  (* This is for old feeds that have use='testing' instead of the newer
+    'test' command for giving test-only dependencies. *)
+  let use = if command = Some "test" then StringSet.singleton "testing" else StringSet.empty in
+
+  let platform = config.system#platform () in
+  let os = default platform.Platform.os os in
+  let machine = default platform.Platform.machine cpu in
+
+  (* Disable multi-arch on Linux if the 32-bit linker is missing. *)
+  let multiarch = os <> "Linux" || config.system#file_exists "/lib/ld-linux.so.2" in
+
+  let open Impl_provider in
+  let scope_filter = {
+    extra_restrictions = StringMap.map Feed.make_version_restriction extra_restrictions;
+    os_ranks = Arch.get_os_ranks os;
+    machine_ranks = Arch.get_machine_ranks ~multiarch machine;
+    languages = Support.Locale.get_langs config.system;
+  } in
+  let scope = { scope_filter; use } in
+
+  let root_req = match command with
+  | Some command -> ReqCommand (command, interface_uri, source)
+  | None -> ReqIface (interface_uri, source) in
+
+  (scope, root_req)
+
 let solve_for config feed_provider requirements =
   try
+    let (scope, root_req) = get_root_requirements config requirements in
+
     let impl_provider = (new Impl_provider.default_impl_provider config feed_provider :> Impl_provider.impl_provider) in
-
-    let open Requirements in
-    let {
-      command; interface_uri; source;
-      extra_restrictions; os; cpu;
-      message = _;
-    } = requirements in
-
-    (* This is for old feeds that have use='testing' instead of the newer
-      'test' command for giving test-only dependencies. *)
-    let use = if command = Some "test" then StringSet.singleton "testing" else StringSet.empty in
-
-    let platform = config.system#platform () in
-    let os = default platform.Platform.os os in
-    let machine = default platform.Platform.machine cpu in
-
-    (* Disable multi-arch on Linux if the 32-bit linker is missing. *)
-    let multiarch = os <> "Linux" || config.system#file_exists "/lib/ld-linux.so.2" in
-
-    let open Impl_provider in
-    let scope_filter = {
-      extra_restrictions = StringMap.map Feed.make_version_restriction extra_restrictions;
-      os_ranks = Arch.get_os_ranks os;
-      machine_ranks = Arch.get_machine_ranks ~multiarch machine;
-      languages = Support.Locale.get_langs config.system;
-    } in
-    let scope = { scope_filter; use } in
-
-    let root_req = match command with
-    | Some command -> ReqCommand (command, interface_uri, source)
-    | None -> ReqIface (interface_uri, source) in
-
-    match solve_for impl_provider scope root_req ~closest_match:false with
+    match do_solve impl_provider scope root_req ~closest_match:false with
     | Some result -> (true, result)
     | None ->
-        match solve_for impl_provider scope root_req ~closest_match:true with
+        match do_solve impl_provider scope root_req ~closest_match:true with
         | Some result -> (false, result)
         | None -> failwith "No solution, even with closest_match!"
   with Safe_exception _ as ex -> reraise_with_context ex "... solving for interface %s" requirements.Requirements.interface_uri

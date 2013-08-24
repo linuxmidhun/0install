@@ -109,7 +109,7 @@ let make_solver_test test_elem =
         };
         fails := ZI.get_attribute_opt "fails" child = Some "true"
     | Some "selections" -> expected_selections := child
-    | Some "problem" -> expected_problem := trim child.Support.Qdom.last_text_inside ^ "\n"
+    | Some "problem" -> expected_problem := trim child.Support.Qdom.last_text_inside
     | _ -> failwith "Unexpected element" in
     ZI.iter ~f:process test_elem;
 
@@ -136,7 +136,7 @@ let make_solver_test test_elem =
     assert (ready = (not !fails));
 
     if (!fails) then
-      let reason = Zeroinstall.Diagnostics.get_failure_reason result in
+      let reason = Zeroinstall.Diagnostics.get_failure_reason config result in
       Fake_system.assert_str_equal !expected_problem reason
     else (
       let actual_sels = result#get_selections () in

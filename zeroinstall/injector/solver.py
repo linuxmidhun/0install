@@ -947,7 +947,7 @@ class SATSolver(Solver):
 						msg += "\n    " + _("No known implementations at all")
 					else:
 						if orig_impls:
-							msg += "\n    " + _("No usable implementations satisfy the restrictions:")
+							msg += "\n    " + _("Rejected candidates:")
 						else:
 							# No implementations were passed to the solver.
 							msg += "\n    " + _("No usable implementations:")
@@ -1008,7 +1008,9 @@ class SATSolver(Solver):
 								break
 							if shown == 0:
 								msg += "\n    " + _("Rejected candidates:")
-							msg += "\n      {impl}: {reason}".format(impl = i, reason = reason)
+							msg += "\n      {impl} ({version}): {reason}".format(impl = i,
+									version = i.get_version(),
+									reason = reason)
 							shown += 1
 
 			return msg
@@ -1179,7 +1181,7 @@ class OCamlSolver(Solver):
 		r.cpu = min((v, k) for k, v in root_arch.machine_ranks.items())[1]
 		self.solve_for(r)
 
-	def solve_for(self, requirements):
+	def solve_for(self, requirements, justify = None):
 		for k, v in self.extra_restrictions.items():
 			assert len(v) < 2, v
 			if len(v) == 1:
@@ -1196,6 +1198,15 @@ class OCamlSolver(Solver):
 		j = json.dumps(dict((key, getattr(requirements, key)) for key in requirements.__slots__)).encode('utf-8')
 		child.stdin.write(("%s\n" % len(j)).encode('utf-8'))
 		child.stdin.write(j)
+
+		if justify is None:
+			child.stdin.write("SOLVE\n".encode('utf-8'))
+		else:
+			data = json.dumps(justify).encode('utf-8')
+			child.stdin.write(("JUSTIFY\n%s\n" % len(data)).encode('utf-8'))
+			child.stdin.write(data)
+			child.stdin.flush()
+
 		child.stdin.flush()
 
 		while True:
@@ -1209,6 +1220,11 @@ class OCamlSolver(Solver):
 			else:
 				send_xml(child.stdin, qdom.Element(namespaces.XMLNS_IFACE, "missing", {}))
 
+		if justify is not None:
+			l = child.stdout.readline()
+			justification = child.stdout.read(int(l)).decode('utf-8')
+			return justification
+
 		self.ready = (resp != 'FAIL')
 		l = child.stdout.readline()
 		self.xml = child.stdout.read(int(l))
@@ -1216,9 +1232,16 @@ class OCamlSolver(Solver):
 		l = child.stdout.readline()
 		self.feeds_used = set(json.loads(child.stdout.read(int(l)).decode('utf-8')))
 
+		if not self.ready:
+			l = child.stdout.readline()
+			self.failure_reason = child.stdout.read(int(l)).decode('utf-8')
+
 		child.stdin.close()
 		child.stdout.close()
 		child.wait()
+
+		if justify is not None:
+			return justification
 
 		try:
 			root = qdom.parse(io.BytesIO(self.xml))
@@ -1265,11 +1288,11 @@ class OCamlSolver(Solver):
 		self.selections = sels
 
 	def get_failure_reason(self):
-		# Fall back to Python
-		if self.python_solver is None:
-			self.python_solver = SATSolver(self.config, self.extra_restrictions)
-			self.python_solver.solve_for(self.r)
-		return self.python_solver.get_failure_reason()
+		return model.SafeException(self.failure_reason)
+
+	def justify_decision(self, requirements, iface, impl):
+		s = OCamlSolver(self.config, self.extra_restrictions)
+		return self.solve_for(requirements, justify = (iface.uri, impl.feed.url, impl.id))
 
 #DefaultSolver = SATSolver
 DefaultSolver = OCamlSolver

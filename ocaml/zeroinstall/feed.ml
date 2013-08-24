@@ -199,18 +199,23 @@ let parse_version_element elem =
       | Some low, Some high -> "version " ^ low ^ "..!" ^ high
   end
 
-let make_version_restriction expr =
-  let test =
-    try Versions.parse_expr expr
-    with Safe_exception (ex_msg, _) as ex ->
-      let msg = Printf.sprintf "Can't parse version restriction '%s': %s" expr ex_msg in
-      log_warning ~ex:ex "%s" msg;
-      (fun _ -> false)
-  in
+let make_impossible_restriction msg =
   object
-    method meets_restriction impl = test impl.parsed_version
-    method to_string = "version " ^ expr
+    method meets_restriction _impl = false
+    method to_string = Printf.sprintf "<impossible: %s>" msg
   end
+
+let make_version_restriction expr =
+  try 
+    let test = Versions.parse_expr expr in
+    object
+      method meets_restriction impl = test impl.parsed_version
+      method to_string = "version " ^ expr
+    end
+  with Safe_exception (ex_msg, _) as ex ->
+    let msg = Printf.sprintf "Can't parse version restriction '%s': %s" expr ex_msg in
+    log_warning ~ex:ex "%s" msg;
+    make_impossible_restriction msg
 
 let parse_dep local_dir dep =
   let iface =
@@ -434,7 +439,7 @@ let parse system root feed_local_path =
 
     let impl = {
       qdom = node;
-      props = !s;
+      props = {!s with requires = List.rev !s.requires};
       os;
       machine;
       stability;
@@ -497,7 +502,7 @@ let parse system root feed_local_path =
 
           s := {!s with
             attrs = List.fold_left add_attr !s.attrs item.Qdom.attrs;
-            requires = List.rev !s.requires;
+            requires = !s.requires;
           };
 
           match ZI.tag item with

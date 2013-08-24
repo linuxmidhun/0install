@@ -83,22 +83,48 @@ let handle options flags args =
   let reqs = Requirements.parse_requirements (read_json ()) in
   let feed_provider = new python_feed_provider options.config (Lazy.force options.distro) in
 
-  let (ready, results) = Zeroinstall.Solver.solve_for options.config feed_provider reqs in
-  if ready then
-    send_status "SUCCESS"
-  else
-    send_status "FAIL";
+  let () =
+    match input_line stdin with
+    | "SOLVE" -> (
+        let (ready, results) = Zeroinstall.Solver.solve_for options.config feed_provider reqs in
+        if ready then
+          send_status "SUCCESS"
+        else
+          send_status "FAIL";
 
-  let sels = results#get_selections () in
-  let buf = Buffer.create 1000 in
-  let out = Xmlm.make_output @@ `Buffer buf in
-  Qdom.output out sels;
-  Buffer.add_char buf '\n';
-  let data = Buffer.contents buf in
-  Printf.printf "%d\n" (String.length data);
-  output_string stdout data;
+        let sels = results#get_selections () in
+        let buf = Buffer.create 1000 in
+        let out = Xmlm.make_output @@ `Buffer buf in
+        Qdom.output out sels;
+        Buffer.add_char buf '\n';
+        let data = Buffer.contents buf in
+        Printf.printf "%d\n" (String.length data);
+        output_string stdout data;
 
-  let json_feeds = `List (List.map (fun f -> `String f) (feed_provider#get_feeds_used ())) in
-  let data = Yojson.Basic.to_string json_feeds in
-  Printf.printf "%d\n" (String.length data);
-  output_string stdout data
+        let json_feeds = `List (List.map (fun f -> `String f) (feed_provider#get_feeds_used ())) in
+        let data = Yojson.Basic.to_string json_feeds in
+        Printf.printf "%d\n" (String.length data);
+        output_string stdout data;
+
+        if not ready then (
+          let data = Zeroinstall.Diagnostics.get_failure_reason options.config results in
+          Printf.printf "%d\n" (String.length data);
+          output_string stdout data
+        );
+    )
+    | "JUSTIFY" -> (
+        let l = int_of_string (input_line stdin) in
+        let buf = String.create l in
+        really_input stdin buf 0 l;
+        match Yojson.Basic.from_string buf with
+        | `List [`String iface; `String feed; `String id] ->
+            let data = Zeroinstall.Diagnostics.justify_decision options.config feed_provider reqs (iface, feed, id) in
+            send_status "SUCCESS";
+            Printf.printf "%d\n" (String.length data);
+            output_string stdout data;
+            flush stdout
+        | _ -> failwith buf
+    )
+    | x -> failwith x
+  in
+  flush stdout

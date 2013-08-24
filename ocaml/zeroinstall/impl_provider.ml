@@ -34,7 +34,7 @@ let describe_problem impl =
   function
   | `User_restriction_rejects r -> "Excluded by user-provided restriction: " ^ r#to_string
   | `Poor_stability           -> spf "Poor stability '%s'" (format_stability impl.stability)
-  | `No_retrieval_methods     -> "Not cached and no way to get it"
+  | `No_retrieval_methods     -> "No retrieval methods"
   | `Not_cached_and_offline   -> "Can't download it because we're offline"
   | `Missing_local_impl       -> "Local impl's directory is missing"
   | `Incompatible_OS          -> "Not compatibile with the requested OS type"

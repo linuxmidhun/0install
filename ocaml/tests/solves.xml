@@ -209,11 +209,11 @@
       </group>
     </interface>
     <requirements command='run' interface='http://example.com/prog.xml' fails='true'/>
-    <problem>
+    <problem>Can't find all required implementations:
 - http://example.com/lib.xml -> (problem)
     http://example.com/prog.xml 2 requires version 1..!2
-    No implementations satisfy the restrictions:
-      l2 (2): Incompatible with restriction version 1..!2
+    Rejected candidates:
+      l2 (2): Incompatible with restriction: version 1..!2
       l1 (1): Requires http://example.com/prog.xml version ..!2
 - http://example.com/prog.xml -> 2 (p2)
     </problem>

@@ -114,9 +114,9 @@ class TestSolver(BaseTest):
 				"- http://foo/Compiler.xml -> (problem)\n"
 				"    http://foo/Binary.xml 3 requires version < 1.0, 1.0 <= version\n"
 				"    No usable implementations satisfy the restrictions:\n"
-				"      sha1=999 (5): incompatible with restrictions\n"
-				"      sha1=345 (1.0): incompatible with restrictions\n"
-				"      sha1=678 (0.1): incompatible with restrictions")
+				"      sha1=999 (5): Incompatible with restrictions\n"
+				"      sha1=345 (1.0): Incompatible with restrictions\n"
+				"      sha1=678 (0.1): Incompatible with restrictions")
 		justify(compiler.uri, compiler_impls["sha1=999"],
 				'''Compiler 5 is selectable, but using it would produce a less optimal solution overall.\n\nThe changes would be:\n\nhttp://foo/Binary.xml: 1.0 to 0.1''')
 
@@ -254,6 +254,8 @@ class TestSolver(BaseTest):
 		assert not s.ready
 
 	def testDiagnostics(self):
+		self.maxDiff = None
+
 		top_uri = 'http://localhost/top.xml'
 		old_uri = 'http://localhost/diagnostics-old.xml'
 		diag_uri = 'http://localhost/diagnostics.xml'
@@ -291,7 +293,7 @@ class TestSolver(BaseTest):
 			r = Requirements(top_uri)
 			r.os = "Windows"
 			r.cpu = "x86_64"
-			s = solver.SATSolver(self.config)
+			s = solver.OCamlSolver(self.config)
 			s.solve_for(r)
 			assert not s.ready, s.selections.selections
 
@@ -327,7 +329,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n" +
 			 "- http://localhost/top.xml -> (problem)\n" +
 			 "    Rejected candidates:\n" +
-			 "      1: No run command")
+			 "      1 (1): No run command")
 
 		# Missing command from dependency
 		s = test("""<implementation version='1' id='1' main='foo'>
@@ -342,8 +344,8 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n" +
 			 "- http://localhost/diagnostics.xml -> (problem)\n" +
 			 "    http://localhost/top.xml 1 requires 'foo' command\n" +
-			 "    Rejected candidates:\n" +
-			 "      diag-5: No foo command\n" +
+			 "    No usable implementations:\n" +
+			 "      diag-5 (5): No foo command\n" +
 			 "- http://localhost/top.xml -> 1 (1)")
 
 		# Failing distribution requirement
@@ -357,9 +359,9 @@ class TestSolver(BaseTest):
 			 """,
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
-			 "    http://localhost/top.xml 1 requires distro foo\n"
-			 "    No usable implementations satisfy the restrictions:\n"
-			 "      diag-5 (5): incompatible with restrictions\n"
+			 "    http://localhost/top.xml 1 requires distribution:foo\n"
+			 "    No usable implementations:\n"
+			 "      diag-5 (5): Incompatible with restriction: distribution:foo\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
 		# Failing version requirement on library
@@ -374,8 +376,8 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    http://localhost/top.xml 1 requires version 100..!200\n"
-			 "    No usable implementations satisfy the restrictions:\n"
-			 "      diag-5 (5): incompatible with restrictions\n"
+			 "    No usable implementations:\n"
+			 "      diag-5 (5): Incompatible with restriction: version 100..!200\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
 		# Failing version requires on root
@@ -391,7 +393,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    Rejected candidates:\n"
-			 "      diag-5: requires http://localhost/top.xml version 100..!200\n"
+			 "      diag-5 (5): Requires http://localhost/top.xml version 100..!200\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
 		# Parse error in version restriction
@@ -407,8 +409,8 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    http://localhost/top.xml 1 requires <impossible: Can't parse version restriction '100..200': End of range must be exclusive (use '..!200', not '..200')>\n"
-			 "    No usable implementations satisfy the restrictions:\n"
-			 "      diag-5 (5): incompatible with restrictions\n"
+			 "    No usable implementations:\n"
+			 "      diag-5 (5): Incompatible with restriction: <impossible: Can't parse version restriction '100..200': End of range must be exclusive (use '..!200', not '..200')>\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 		logger.setLevel(logging.WARNING)
 
@@ -425,9 +427,9 @@ class TestSolver(BaseTest):
 			 """,
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
-			 "    http://localhost/top.xml 1 requires 100 <= version\n"
-			 "    No usable implementations satisfy the restrictions:\n"
-			 "      diag-5 (5): incompatible with restrictions\n"
+			 "    http://localhost/top.xml 1 requires version 100..\n"
+			 "    No usable implementations:\n"
+			 "      diag-5 (5): Incompatible with restriction: version 100..\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
 		# Mismatched machine types
@@ -446,7 +448,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    Rejected candidates:\n"
-			 "      diag-5: Can't use x86_64 with selection of Top-level (i486)\n"
+			 "      diag-5 (5): Can't use x86_64 with selection of http://localhost/top.xml (i486)\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
 		# Only show the first five unusable reasons
@@ -500,13 +502,13 @@ class TestSolver(BaseTest):
 			     </implementation>""".format(i = i) for i in range(0, 5))),
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
-			 "    http://localhost/top.xml 1 requires version < 6\n"
+			 "    http://localhost/top.xml 1 requires version ..!6\n"
 			 "    Rejected candidates:\n"
-			 "      diag-5: Can't use x86_64 with selection of Top-level (i486)\n"
-			 "      diag-4: Can't use x86_64 with selection of Top-level (i486)\n"
-			 "      diag-3: Can't use x86_64 with selection of Top-level (i486)\n"
-			 "      diag-2: Can't use x86_64 with selection of Top-level (i486)\n"
-			 "      diag-1: Can't use x86_64 with selection of Top-level (i486)\n"
+			 "      diag-6 (6): Incompatible with restriction: version ..!6\n"
+			 "      diag-5 (5): Can't use x86_64 with selection of http://localhost/top.xml (i486)\n"
+			 "      diag-4 (4): Can't use x86_64 with selection of http://localhost/top.xml (i486)\n"
+			 "      diag-3 (3): Can't use x86_64 with selection of http://localhost/top.xml (i486)\n"
+			 "      diag-2 (2): Can't use x86_64 with selection of http://localhost/top.xml (i486)\n"
 			 "      ...\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
@@ -516,13 +518,12 @@ class TestSolver(BaseTest):
 		r = Requirements(top_uri)
 		r.os = 'Windows'
 		r.cpu = 'x86_64'
-		self.assertEqual("There is no possible selection using Diagnostics 5.\n"
+		self.assertEqual("There is no possible selection using http://localhost/diagnostics.xml 5.\n"
 				 "Can't find all required implementations:\n"
 				 "- http://localhost/diagnostics.xml -> (problem)\n"
-				 "    http://localhost/top.xml 1 requires version < 6\n"
-				 "    User requested implementation 5 (diag-5)\n"
+				 "    http://localhost/top.xml 1 requires version ..!6\n"
 				 "    Rejected candidates:\n"
-				 "      diag-5: Can't use x86_64 with selection of Top-level (i486)\n"
+				 "      diag-5 (5): Can't use x86_64 with selection of http://localhost/top.xml (i486)\n"
 				 "- http://localhost/top.xml -> 1 (1)",
 				s.justify_decision(r, iface, impl))
 
@@ -543,8 +544,8 @@ class TestSolver(BaseTest):
 		    "Can't find all required implementations:\n"
 		    "- http://localhost/diagnostics-old.xml -> (problem)\n"
 		    "    Replaced by (and therefore conflicts with) http://localhost/diagnostics.xml\n"
-		    "    No usable implementations satisfy the restrictions:\n"
-		    "      diag-5 (5): incompatible with restrictions\n"
+		    "    No usable implementations:\n"
+		    "      diag-5 (5): Conflicts with http://localhost/diagnostics.xml\n"
 		    "- http://localhost/diagnostics.xml -> 5 (diag-5)\n"
 		    "    Replaces (and therefore conflicts with) http://localhost/diagnostics-old.xml\n"
 		    "- http://localhost/top.xml -> 1 (1)")
