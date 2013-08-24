@@ -9,9 +9,9 @@ BUILDDIR = $(abspath build)
 # Default to /usr because Python doesn't look in /usr/local by default on all systems.
 PREFIX = /usr
 
-GTKBUILDER = $(shell find zeroinstall -name '*.ui' | sort | sed -e 's/\.ui/&.h/')
+GTKBUILDER = $(shell cd ${SRCDIR} && find zeroinstall -name '*.ui' | sort | sed -e 's/\.ui/&.h/')
 SH = zeroinstall/zerostore/_unlzma
-PY = $(shell find zeroinstall -name '*.py' | sort)
+PY = $(shell cd ${SRCDIR} && find zeroinstall -name '*.py' | sort)
 
 # There are several things you might want to do:
 #
@@ -26,7 +26,7 @@ PY = $(shell find zeroinstall -name '*.py' | sort)
 # a) $DISTDIR ends up with a complete distribution suitable for publishing or
 #    registering with 0install. $DISTDIR contains:
 #    - Python source code
-#    - Cross-platform OCaml bytecode (TODO: this is not yet working)
+#    - Cross-platform OCaml bytecode
 #    - A 0install binary feed, which can be registered with "0install add"
 #
 # b) A native "0install" executable is created in $BUILDDIR, but is not copied

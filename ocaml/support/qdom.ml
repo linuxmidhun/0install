@@ -155,6 +155,12 @@ let output o root =
     Xmlm.output o @@ `El_end in
   output_node {root with attrs = !root_attrs}
 
+let to_utf8 elem =
+  let buf = Buffer.create 1000 in
+  let out = Xmlm.make_output @@ `Buffer buf in
+  output out elem;
+  Buffer.contents buf
+
 let get_attribute_opt attr elem =
   try
     Some (List.assoc attr elem.attrs)
@@ -164,6 +170,54 @@ let get_attribute_opt attr elem =
 let set_attribute name value element =
   let pair = ("", name) in
   element.attrs <- (pair, value) :: List.remove_assoc pair element.attrs
+
+let reindent root =
+  let rec process indent node =
+    node.text_before <- indent ^ (trim node.text_before);
+    if node.child_nodes <> [] then (
+      List.iter (process @@ indent ^ "  ") node.child_nodes;
+      node.last_text_inside <- (trim node.last_text_inside) ^ indent;
+    )
+    in
+  process "\n" root;
+  root.text_before <- "";
+
+exception Compare_result of int
+
+module AttrSet = Set.Make(
+  struct
+    type t = (Xmlm.name * string)
+    let compare a b = compare a b
+  end
+)
+
+let set_of_attrs elem : AttrSet.t =
+  List.fold_left (fun set attr -> AttrSet.add attr set) AttrSet.empty elem.attrs
+
+let compare_nodes ~ignore_whitespace a b =
+  let test x y =
+    match compare x y with
+    | 0 -> ()
+    | x -> raise (Compare_result x) in
+
+  let rec find_diff a b =
+    test a.tag b.tag;
+    let () =
+      match AttrSet.compare (set_of_attrs a) (set_of_attrs b) with
+      | 0 -> ()
+      | x -> raise (Compare_result x) in
+    if ignore_whitespace then (
+      test (trim a.text_before) (trim b.text_before);
+      test (trim a.last_text_inside) (trim b.last_text_inside)
+    ) else (
+      test a.text_before b.text_before;
+      test a.last_text_inside b.last_text_inside
+    );
+    test (List.length a.child_nodes) (List.length b.child_nodes);
+    List.iter2 find_diff a.child_nodes b.child_nodes in
+
+  try find_diff a b; 0
+  with Compare_result x -> x
 
 module NsQuery (Ns : NsType) = struct
   (** Return the localName part of this element's tag.

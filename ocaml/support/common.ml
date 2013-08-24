@@ -18,7 +18,12 @@ let (@@) a b = a b
 type filepath = string
 type varname = string
 
+type yes_no_maybe = Yes | No | Maybe
+
 exception Safe_exception of (string * string list ref);;
+
+(** Raise this to exit the program. Allows finally blocks to run. *)
+exception System_exit of int
 
 module Platform =
   struct
@@ -52,6 +57,11 @@ class type system =
     method rmdir : filepath -> unit
     method getcwd : unit -> filepath
     method atomic_write : open_flag list -> (out_channel -> 'a) -> filepath -> Unix.file_perm -> 'a
+
+    (** Remove [replace] and replace it with a hardlink to [source]. If possible, ensure
+        that there is no point where [replace] does not exist. *)
+    method atomic_hardlink : link_to:filepath -> replace:filepath -> unit
+
     method readdir : filepath -> string array result
     method chmod : filepath -> Unix.file_perm -> unit
     method set_mtime : filepath -> float -> unit

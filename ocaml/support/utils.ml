@@ -37,6 +37,7 @@ let () = Printexc.register_printer safe_to_string;;
 let handle_exceptions main args =
   try main args
   with
+  | System_exit x -> exit x
   | Safe_exception (msg, context) ->
       Printf.eprintf "%s\n" msg;
       List.iter (Printf.eprintf "%s\n") (List.rev !context);
@@ -78,16 +79,19 @@ let filter_map_array ~f arr =
   List.rev !result
 
 (** [makedirs path mode] ensures that [path] is a directory, creating it and any missing parents (using [mode]) if not. *)
-let rec makedirs (system:system) path mode =
-  match system#lstat path with
-  | Some info ->
-      if info.Unix.st_kind = Unix.S_DIR then ()
-      else raise_safe "Not a directory: %s" path
-  | None ->
-      let parent = (Filename.dirname path) in
-      assert (path <> parent);
-      makedirs system parent mode;
-      system#mkdir path mode
+let makedirs (system:system) path mode =
+  let rec loop path =
+    match system#lstat path with
+    | Some info ->
+        if info.Unix.st_kind = Unix.S_DIR then ()
+        else raise_safe "Not a directory: %s" path
+    | None ->
+        let parent = (Filename.dirname path) in
+        assert (path <> parent);
+        loop parent;
+        system#mkdir path mode in
+  try loop path
+  with Safe_exception _ as ex -> reraise_with_context ex "... creating directory %s" path
 
 let starts_with str prefix =
   let ls = String.length str in
@@ -203,8 +207,11 @@ let getenv_ex system name =
 
 let re_dash = Str.regexp_string "-"
 let re_space = Str.regexp_string " "
+let re_tab = Str.regexp_string "\t"
 let re_dir_sep = Str.regexp_string Filename.dir_sep;;
 let re_path_sep = Str.regexp_string path_sep;;
+let re_colon = Str.regexp_string ":"
+let re_equals = Str.regexp_string "="
 
 (** Try to guess the full path of the executable that the user means.
     On Windows, we add a ".exe" extension if it's missing.
@@ -322,23 +329,25 @@ let ro_rmtree (sys:system) root =
   if starts_with (sys#getcwd () ^ Filename.dir_sep) (root ^ Filename.dir_sep) then
     log_warning "Removing tree (%s) containing the current directory (%s) - this will not work on Windows" root (sys#getcwd ());
 
-  let rec rmtree path =
-    match sys#lstat path with
-    | None -> failwith ("Path " ^ path ^ " does not exist!")
-    | Some info ->
-      match info.Unix.st_kind with
-      | Unix.S_REG | Unix.S_LNK | Unix.S_BLK | Unix.S_CHR | Unix.S_SOCK | Unix.S_FIFO ->
-          if on_windows then sys#chmod path 0o700;
-          sys#unlink path
-      | Unix.S_DIR -> (
-          match sys#readdir path with
-          | Success files ->
-              sys#chmod path 0o700;
-              Array.iter (fun leaf -> rmtree @@ path +/ leaf) files;
-              sys#rmdir path
-          | Problem ex -> raise ex
-    ) in
-  rmtree root
+  try
+    let rec rmtree path =
+      match sys#lstat path with
+      | None -> failwith ("Path " ^ path ^ " does not exist!")
+      | Some info ->
+        match info.Unix.st_kind with
+        | Unix.S_REG | Unix.S_LNK | Unix.S_BLK | Unix.S_CHR | Unix.S_SOCK | Unix.S_FIFO ->
+            if on_windows then sys#chmod path 0o700;
+            sys#unlink path
+        | Unix.S_DIR -> (
+            sys#chmod path 0o700;
+            match sys#readdir path with
+            | Success files ->
+                Array.iter (fun leaf -> rmtree @@ path +/ leaf) files;
+                sys#rmdir path
+            | Problem ex -> raise_safe "Can't read directory '%s': %s" path (Printexc.to_string ex)
+      ) in
+    rmtree root
+  with Safe_exception _ as ex -> reraise_with_context ex "... trying to delete directory %s" root
 
 (** Copy [source] to [dest]. Error if [dest] already exists. *)
 let copy_file (system:system) source dest mode =
@@ -449,11 +458,13 @@ let realpath (system:system) path =
         join_realpath Filename.dir_sep rest seen
   in
 
-  if on_windows then
-    abspath system path
-  else (
-    fst @@ join_realpath (system#getcwd ()) path StringMap.empty
-  )
+  try
+    if on_windows then
+      abspath system path
+    else (
+      fst @@ join_realpath (system#getcwd ()) path StringMap.empty
+    )
+  with Safe_exception _ as ex -> reraise_with_context ex "... in realpath(%s)" path
 
 let format_time t =
   let open Unix in
@@ -464,3 +475,35 @@ let format_time t =
     t.tm_hour
     t.tm_min
     t.tm_sec
+
+let format_date t =
+  let open Unix in
+  Printf.sprintf "%04d-%02d-%02d"
+    (1900 + t.tm_year)
+    (t.tm_mon + 1)
+    t.tm_mday
+
+(** Read up to [n] bytes from [ch] (less if we hit end-of-file. *)
+let read_upto n ch : string =
+  let buf = String.create n in
+  let saved = ref 0 in
+  try
+    while !saved < n do
+      let got = input ch buf !saved (n - !saved) in
+      if got = 0 then
+        raise End_of_file;
+      assert (got > 0);
+      saved := !saved + got
+    done;
+    buf
+  with End_of_file ->
+    String.sub buf 0 !saved
+
+let is_dir system path =
+  match system#stat path with
+  | None -> false
+  | Some info -> info.Unix.st_kind = Unix.S_DIR
+
+let touch (system:system) path =
+  system#with_open_out [Open_wronly; Open_creat] 0700 path (fun _ch -> ());
+  system#set_mtime path @@ system#time ()   (* In case file already exists *)

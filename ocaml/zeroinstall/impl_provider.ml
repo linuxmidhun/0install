@@ -10,28 +10,49 @@ module U = Support.Utils
 
 (** We filter the implementations before handing them to the solver, excluding any
     we know are unsuitable even on their own. *)
-type acceptability =
-  | Acceptable                (* We can use this version *)
-  | User_restriction_rejects  (* Excluded by --version-for or similar *)
-  | Poor_stability            (* Buggy/Insecure *)
-  | No_retrieval_methods      (* Not cached and no way to get it *)
-  | Not_cached_and_offline    (* Can't download it becuase we're offline *)
-  | Missing_local_impl        (* Impl directory not found *)
-  | Incompatible_OS           (* Required platform not in os_ranks *)
-  | Not_binary                (* We want a binary and this is source *)
-  | Not_source                (* We want source and this is a binary *)
-  | Incompatible_machine      (* Required CPU not in machine_ranks *)
+
+type rejection = [
+  | `User_restriction_rejects of Feed.restriction
+  | `Poor_stability
+  | `No_retrieval_methods
+  | `Not_cached_and_offline
+  | `Missing_local_impl
+  | `Incompatible_OS
+  | `Not_binary
+  | `Not_source
+  | `Incompatible_machine
+]
+
+type acceptability = [
+  | `Acceptable
+  | rejection
+]
+
+let describe_problem impl =
+  let open Feed in
+  let spf = Printf.sprintf in
+  function
+  | `User_restriction_rejects r -> "Excluded by user-provided restriction: " ^ r#to_string
+  | `Poor_stability           -> spf "Poor stability '%s'" (format_stability impl.stability)
+  | `No_retrieval_methods     -> "Not cached and no way to get it"
+  | `Not_cached_and_offline   -> "Can't download it because we're offline"
+  | `Missing_local_impl       -> "Local impl's directory is missing"
+  | `Incompatible_OS          -> "Not compatibile with the requested OS type"
+  | `Not_binary               -> "We want a binary and this is source"
+  | `Not_source               -> "We want source and this is a binary"
+  | `Incompatible_machine     -> "Not compatibile with the requested CPU type"
 
 type scope_filter = {
   extra_restrictions : Feed.restriction StringMap.t;  (* iface -> test *)
   os_ranks : int StringMap.t;
   machine_ranks : int StringMap.t;
-  languages : Locale.lang_spec list;    (* Must match one of these, earlier ones preferred *)
+  languages : Support.Locale.lang_spec list;    (* Must match one of these, earlier ones preferred *)
 }
 
 type candidates = {
   replacement : iface_uri option;
   impls : Feed.implementation list;
+  rejects : (Feed.implementation * rejection) list;
 }
 
 class type impl_provider =
@@ -51,6 +72,8 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
 
   let get_impls (feed, overrides) =
     do_overrides overrides @@ Feed.get_implementations feed in
+
+  let cached_digests = Stores.get_available_digests config.system config.stores in
 
   object (_ : #impl_provider)
     val cache = Hashtbl.create 10
@@ -80,13 +103,17 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
       let get_extra_feeds iface_config =
         Support.Utils.filter_map ~f:get_feed_if_useful iface_config.Feed_cache.extra_feeds in
 
-      let passes_user_restrictions =
-        try snd (StringMap.find iface extra_restrictions)
-        with Not_found ->
-          fun _ -> true in
+      let user_restrictions =
+        try Some (StringMap.find iface extra_restrictions)
+        with Not_found -> None in
 
       let is_available impl =
-        try Feed.is_available_locally config impl
+        try
+          let open Feed in
+          match impl.impl_type with
+          | PackageImpl {package_installed;_} -> package_installed
+          | LocalImpl path -> config.system#file_exists path
+          | CacheImpl {digests;_} -> Stores.check_available cached_digests digests
         with Safe_exception _ as ex ->
           log_warning ~ex "Can't test whether impl is available: %s" (Support.Qdom.show_with_loc impl.Feed.qdom);
           false in
@@ -228,7 +255,7 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
             | None -> None
             | Some (feed, _overrides) -> feed.Feed.replacement in
 
-          let candidates = {replacement; impls} in
+          let candidates = {replacement; impls; rejects = []} in
           Hashtbl.add cache iface candidates;
           candidates in
 
@@ -246,28 +273,38 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
         let stability = impl.Feed.stability in
         let is_source = impl.Feed.machine = Some "src" in
 
-        if not (passes_user_restrictions impl) then User_restriction_rejects
-        else if stability <= Buggy then Poor_stability
-        else if not (os_ok impl) then Incompatible_OS
-        else if want_source && not is_source then Not_source
-        else if not (want_source) && is_source then Not_binary
-        else if not want_source && not (machine_ok impl) then Incompatible_machine
-        (* Acceptable if we've got it already or we can get it *)
-        else if is_available impl then Acceptable
-        (* It's not cached, but might still be OK... *)
-        else (
-          let open Feed in
-          match impl.Feed.impl_type with
-          | LocalImpl _ -> Missing_local_impl   (* We can never get a missing local impl *)
-          | PackageImpl _ -> if config.network_use = Offline then Not_cached_and_offline else Acceptable
-          | CacheImpl {retrieval_methods = [];_} -> No_retrieval_methods
-          | CacheImpl cache_impl ->
-              if config.network_use <> Offline then Acceptable   (* Can download it *)
-              else if Feed.is_retrievable_without_network cache_impl then Acceptable
-              else Not_cached_and_offline
-        ) in
+        match user_restrictions with
+        | Some r when not (r#meets_restriction impl) -> `User_restriction_rejects r
+        | _ ->
+            if stability <= Buggy then `Poor_stability
+            else if not (os_ok impl) then `Incompatible_OS
+            else if want_source && not is_source then `Not_source
+            else if not (want_source) && is_source then `Not_binary
+            else if not want_source && not (machine_ok impl) then `Incompatible_machine
+            (* Acceptable if we've got it already or we can get it *)
+            else if is_available impl then `Acceptable
+            (* It's not cached, but might still be OK... *)
+            else (
+              let open Feed in
+              match impl.Feed.impl_type with
+              | LocalImpl _ -> `Missing_local_impl   (* We can never get a missing local impl *)
+              | PackageImpl _ -> if config.network_use = Offline then `Not_cached_and_offline else `Acceptable
+              | CacheImpl {retrieval_methods = [];_} -> `No_retrieval_methods
+              | CacheImpl cache_impl ->
+                  if config.network_use <> Offline then `Acceptable   (* Can download it *)
+                  else if Feed.is_retrievable_without_network cache_impl then `Acceptable
+                  else `Not_cached_and_offline
+            ) in
 
-      let do_filter impl = check_acceptability impl = Acceptable in
+      let rejects = ref [] in
 
-      {candidates with impls = List.filter do_filter (candidates.impls)}
+      let do_filter impl =
+        (* check_acceptability impl = Acceptable in *)
+        match check_acceptability impl with
+        | `Acceptable -> true
+        | #rejection as x -> rejects := (impl, x) :: !rejects; false
+      (*| problem -> log_warning "rejecting %s %s: %s" iface (Versions.format_version impl.Feed.parsed_version) (describe_problem impl problem); false *)
+      in
+
+      {candidates with impls = List.filter do_filter (candidates.impls); rejects = !rejects}
   end

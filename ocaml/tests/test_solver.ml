@@ -2,11 +2,10 @@
  * See the README file for details, or visit http://0install.net.
  *)
 
-open General
+open Zeroinstall.General
 open Support.Common
 open OUnit
-
-module ZI = General.ZI
+open Zeroinstall
 
 module StringData =
   struct
@@ -15,7 +14,7 @@ module StringData =
     let unused = "unused"
   end
 
-module Sat = Sat.MakeSAT(StringData)
+module Sat = Support.Sat.MakeSAT(StringData)
 
 open Sat
 
@@ -38,12 +37,6 @@ let set_of_attrs elem : string list =
   ) in
   List.sort compare str_list
 
-let string_of_element elem =
-  let buf = Buffer.create 100 in
-  let out = Xmlm.make_output @@ `Buffer buf in
-  Support.Qdom.output out elem;
-  Buffer.contents buf
-
 let xml_diff exp actual =
   let open Support.Qdom in
   let p = Printf.printf in
@@ -63,10 +56,11 @@ let xml_diff exp actual =
       )
     ) in
   if find_diff exp actual then (
+    assert (compare_nodes ~ignore_whitespace:true exp actual <> 0);
     assert_equal ~printer:(fun s -> s)
-      (string_of_element exp)
-      (string_of_element actual)
-  )
+      (to_utf8 exp)
+      (to_utf8 actual)
+  ) else assert (compare_nodes ~ignore_whitespace:true exp actual = 0)
 
 (** Give every implementation an <archive>, so we think it's installable. *)
 let rec make_all_downloable node =
@@ -88,16 +82,24 @@ let make_solver_test test_elem =
   let name = ZI.get_attribute "name" test_elem in
   name >:: (fun () ->
     let (config, fake_system) = Fake_system.get_fake_config None in
-    let reqs = ref (Requirements.default_requirements "") in
+    if on_windows then (
+      fake_system#add_dir "C:\\Users\\test\\AppData\\Local\\0install.net\\implementations" [];
+      fake_system#add_dir "C:\\ProgramData\\0install.net\\implementations" [];
+    ) else (
+      fake_system#add_dir "/home/testuser/.cache/0install.net/implementations" [];
+      fake_system#add_dir "/var/cache/0install.net/implementations" [];
+    );
+    let reqs = ref (Zeroinstall.Requirements.default_requirements "") in
     let ifaces = Hashtbl.create 10 in
     let fails = ref false in
     let add_iface elem =
-      let open Feed in
+      let open Zeroinstall.Feed in
       make_all_downloable elem;
       let uri = ZI.get_attribute "uri" elem in
       let feed = parse (fake_system :> system) elem None in
       Hashtbl.add ifaces uri feed in
     let expected_selections = ref (ZI.make_root "missing") in
+    let expected_problem = ref "missing" in
     let process child = match ZI.tag child with
     | Some "interface" -> add_iface child
     | Some "requirements" ->
@@ -107,6 +109,7 @@ let make_solver_test test_elem =
         };
         fails := ZI.get_attribute_opt "fails" child = Some "true"
     | Some "selections" -> expected_selections := child
+    | Some "problem" -> expected_problem := trim child.Support.Qdom.last_text_inside ^ "\n"
     | _ -> failwith "Unexpected element" in
     ZI.iter ~f:process test_elem;
 
@@ -127,17 +130,23 @@ let make_solver_test test_elem =
 
         method have_stale_feeds () = false
       end in
-    let (ready, result) = Solver.solve_for config feed_provider !reqs in
+    let (ready, result) = Zeroinstall.Solver.solve_for config feed_provider !reqs in
     if ready && !fails then assert_failure "Expected solve to fail, but it didn't!";
     if not ready && not (!fails) then assert_failure "Solve failed (not ready)";
     assert (ready = (not !fails));
-    let actual_sels = result#get_selections () in
-    assert (ZI.tag actual_sels = Some "selections");
-    if ready then (
-      let changed = Whatchanged.show_changes (fake_system :> system) !expected_selections actual_sels in
-      assert (not changed);
-    );
-    xml_diff !expected_selections actual_sels
+
+    if (!fails) then
+      let reason = Zeroinstall.Diagnostics.get_failure_reason result in
+      Fake_system.assert_str_equal !expected_problem reason
+    else (
+      let actual_sels = result#get_selections () in
+      assert (ZI.tag actual_sels = Some "selections");
+      if ready then (
+        let changed = Whatchanged.show_changes (fake_system :> system) !expected_selections actual_sels in
+        assert (not changed);
+      );
+      xml_diff !expected_selections actual_sels
+    )
   )
 
 let suite = "solver">::: [
@@ -227,12 +236,15 @@ let suite = "solver">::: [
   "feed_provider">:: (fun () ->
     let open Feed_cache in
     let (config, fake_system) = Fake_system.get_fake_config None in
-    let distro = new Distro.base_distribution in
+    let slave = new Zeroinstall.Python.slave config in
+    let distro = new Distro.generic_distribution slave in
     let feed_provider = new feed_provider config distro in
     let uri = "http://example.com/prog" in
     let iface_config = feed_provider#get_iface_config uri in
     assert (iface_config.stability_policy = None);
     assert (iface_config.extra_feeds = []);
+
+    skip_if (Sys.os_type = "Win32") "No native packages";
 
     fake_system#add_file "/usr/share/0install.net/native_feeds/http:##example.com#prog" "Hello.xml";
     let iface_config = feed_provider#get_iface_config uri in
@@ -240,42 +252,47 @@ let suite = "solver">::: [
     match iface_config.extra_feeds with
     | [ { Feed.feed_src = "/usr/share/0install.net/native_feeds/http:##example.com#prog";
           Feed.feed_type = Feed.Distro_packages; _ } ] -> ()
+    | [ { Feed.feed_src;_ } ] -> assert_failure feed_src;
     | _ -> assert_failure "Didn't find native feed"
   );
 
   "impl_provider">:: (fun () ->
-    let open Impl_provider in
+    let open Zeroinstall.Impl_provider in
     let (config, fake_system) = Fake_system.get_fake_config None in
+    if on_windows then (
+      fake_system#add_dir "C:\\Users\\test\\AppData\\Local\\0install.net\\implementations" [];
+      fake_system#add_dir "C:\\ProgramData\\0install.net\\implementations" ["sha1=1"];
+    ) else (
+      fake_system#add_dir "/home/testuser/.cache/0install.net/implementations" [];
+      fake_system#add_dir "/var/cache/0install.net/implementations" ["sha1=1"];
+    );
     let system = (fake_system :> system) in
     let iface = "http://example.com/prog.xml" in
+    let slave = new Zeroinstall.Python.slave config in
 
     let distro =
       object
-        inherit Distro.base_distribution
+        inherit Distro.generic_distribution slave as super
         method! get_package_impls (elem, props) = [
-          Distro.make_package_implementation elem props
-            ~distro_name:"distro"
+          super#make_package_implementation elem props
             ~is_installed:true
             ~id:"package:is_distro_v1-1"
             ~machine:"x86_64"
             ~version:"1-1"
             ~extra_attrs:[];
-          Distro.make_package_implementation elem props
-            ~distro_name:"distro"
+          super#make_package_implementation elem props
             ~is_installed:false
             ~id:"package:root_install_needed_2"
             ~machine:"x86_64"
             ~version:"1-1"
             ~extra_attrs:[];
-          Distro.make_package_implementation elem props
-            ~distro_name:"distro"
+          super#make_package_implementation elem props
             ~is_installed:false
             ~id:"package:root_install_needed_1"
             ~machine:"x86_64"
             ~version:"1-1"
             ~extra_attrs:[];
-          Distro.make_package_implementation elem props
-            ~distro_name:"distro"
+          super#make_package_implementation elem props
             ~is_installed:true
             ~id:"package:buggy"
             ~machine:"x86_64"
@@ -322,20 +339,19 @@ let suite = "solver">::: [
         method have_stale_feeds () = false
       end in
 
-    fake_system#add_dir "/var/cache/0install.net/implementations/sha1=1" ["README.txt"];
-
     config.network_use <- Minimal_network;
 
     let scope_filter = {
       extra_restrictions = StringMap.empty;
       os_ranks = Arch.get_os_ranks "Linux";
       machine_ranks = Arch.get_machine_ranks "x86_64" ~multiarch:true;
-      languages = Support.Utils.filter_map ~f:Locale.parse_lang ["es_ES"; "fr_FR"];
+      languages = Support.Utils.filter_map ~f:Support.Locale.parse_lang ["es_ES"; "fr_FR"];
     } in
 
     let test_solve scope_filter =
       let impl_provider = new default_impl_provider config feed_provider in
-      let {replacement; impls} = impl_provider#get_implementations scope_filter iface ~source:false in
+      let {replacement; impls; rejects = _} = impl_provider#get_implementations scope_filter iface ~source:false in
+      (* List.iter (fun (impl, r) -> failwith @@ describe_problem impl r) rejects; *)
       assert_equal ~msg:"replacement" (Some "http://example.com/replacement.xml") replacement;
       let ids = List.map (fun i -> Feed.get_attr "id" i) impls in
       ids in

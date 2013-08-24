@@ -71,8 +71,14 @@ module RealSystem (U : UnixType) =
         method mkdir = Unix.mkdir
         method file_exists = Sys.file_exists
         method create_process args new_stdin new_stdout new_stderr =
-          Logging.log_info "Running %s" @@ Logging.format_argv_for_logging args;
-          Unix.create_process (List.hd args) (Array.of_list args) new_stdin new_stdout new_stderr
+          log_info "Running %s" @@ Logging.format_argv_for_logging args;
+          try
+            wrap_unix_errors (fun () ->
+              Unix.create_process (List.hd args) (Array.of_list args) new_stdin new_stdout new_stderr
+            )
+          with Safe_exception _ as ex ->
+            reraise_with_context ex "... trying to create sub-process '%s'"
+              (Logging.format_argv_for_logging args)
 
         method unlink = Unix.unlink
         method rmdir = Unix.rmdir
@@ -158,8 +164,6 @@ module RealSystem (U : UnixType) =
             reraise_with_context ex "... trying to exec: %s" cmd
 
         method spawn_detach ?(search_path = false) ?env argv =
-          flush stdout;
-          flush stderr;
           try
             wrap_unix_errors (fun () ->
               let argv_array = Array.of_list argv in
@@ -167,16 +171,20 @@ module RealSystem (U : UnixType) =
                 if search_path then Utils.find_in_path_ex (self :> system) (List.hd argv)
                 else (List.hd argv) in
 
-              if !Logging.threshold >= Logging.Info then
+              if !Logging.threshold <= Logging.Info then
                 log_info "spawn %s" @@ Logging.format_argv_for_logging argv;
+
+              flush stdout;
+              flush stderr;
 
               let do_spawn () =
                 (* We don't reap the child. On Unix, we're in a child process that is about to exit anyway (init will inherit the child).
                    On Windows, hopefully it doesn't matter. *)
                 ignore @@ Utils.finally Unix.close (Unix.openfile dev_null [Unix.O_WRONLY] 0) (fun null_fd ->
+                  let stderr = if !Logging.threshold = Logging.Debug then Unix.stderr else null_fd in
                   match env with
-                    | None -> Unix.create_process prog_path argv_array null_fd null_fd Unix.stderr
-                    | Some env -> Unix.create_process_env prog_path argv_array env null_fd null_fd Unix.stderr
+                    | None -> Unix.create_process prog_path argv_array null_fd null_fd stderr
+                    | Some env -> Unix.create_process_env prog_path argv_array env null_fd null_fd stderr
                 ) in
 
               if on_windows then (
@@ -205,6 +213,19 @@ module RealSystem (U : UnixType) =
             result
           with Safe_exception _ as ex -> reraise_with_context ex "... trying to write '%s'" path
 
+        method atomic_hardlink ~link_to ~replace =
+          if on_windows then (
+            if Sys.file_exists replace then
+              Unix.unlink replace;
+            Unix.link link_to replace
+          ) else (
+            let tmp = (replace ^ ".new") in
+            if Sys.file_exists tmp then
+              Unix.unlink tmp;
+            Unix.link link_to tmp;
+            Unix.rename tmp replace
+          )
+
         method getenv name =
           try Some (Sys.getenv name)
           with Not_found -> None
@@ -225,8 +246,9 @@ module RealSystem (U : UnixType) =
               let system = (self :> system) in
               let p =
                 if Sys.os_type = "Win32" then (
-                  (* TODO: is this really the machine's word size, or just OCaml's word size? What about non-x86 Windows? *)
-                  let machine = if Sys.word_size = 64 then "x86_64" else "i686" in
+                  let machine =
+                    try ignore @@ Sys.getenv "ProgramFiles(x86)"; "x86_64"
+                    with Not_found -> "i686" in
                   {os = "Windows"; release = "Unknown"; machine}
                 ) else (
                   let uname = trim @@ Utils.check_output system input_line [Utils.find_in_path_ex system "uname"; "-srm"] in

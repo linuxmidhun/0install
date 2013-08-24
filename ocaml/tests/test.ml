@@ -3,7 +3,7 @@
  *)
 
 open OUnit
-open General
+open Zeroinstall.General
 open Support.Common
 open Fake_system
 
@@ -44,61 +44,94 @@ let test_basedir () =
 let test_option_parsing () =
   Support.Logging.threshold := Support.Logging.Warning;
 
-  let config, _system = get_fake_config None in
+  let config, fake_system = get_fake_config None in
   let open Options in
-  let p args = Cli.parse_args config args in
 
-  assert_equal Maybe (p []).gui;
-  assert_equal No (p ["--console"]).gui;
+  let p_full raw_args =
+    let (raw_options, args, complete) = Support.Argparse.read_args Cli.spec raw_args in
+    assert (complete = Support.Argparse.CompleteNothing);
+    let subcommand =
+      match args with
+      | command :: _ -> List.assoc command Cli.subcommands
+      | [] -> Cli.no_command in
+    let flags = Support.Argparse.parse_options subcommand#options raw_options in
+    let options = Cli.get_default_options config in
+    let process = function
+      | #common_option as flag -> Common_options.process_common_option options flag
+      | _ -> () in
+    Support.Argparse.iter_options flags process;
+    (options, flags, args) in
 
-  let s = p ["--with-store"; "/data/store"; "run"; "foo"] in
-  assert_equal "/data/store" (List.hd config.stores);
-  equal_str_lists ["run"; "foo"] s.args;
+  let p args = let (options, _flags, _args) = p_full args in options in
+
+  assert_equal Maybe (p ["select"]).gui;
+  assert_equal No (p ["--console"; "select"]).gui;
+
+  let _, _, args = p_full ["--with-store"; "/data/store"; "run"; "foo"] in
+  assert_equal "/data/store" (List.nth config.stores @@ List.length config.stores - 1);
+  equal_str_lists ["run"; "foo"] args;
 
   config.stores <- [];
-  let s = p ["--with-store=/data/s1"; "run"; "--with-store=/data/s2"; "foo"; "--with-store=/data/s3"] in
-  equal_str_lists ["/data/s2"; "/data/s1"] config.stores;
-  equal_str_lists ["run"; "foo"; "--with-store=/data/s3"] s.args;
+  let _, _, args = p_full ["--with-store=/data/s1"; "run"; "--with-store=/data/s2"; "foo"; "--with-store=/data/s3"] in
+  equal_str_lists ["/data/s1"; "/data/s2"] config.stores;
+  equal_str_lists ["run"; "foo"; "--with-store=/data/s3"] args;
 
   assert_raises_safe "Option does not take an argument in '--console=true'" (lazy (p ["--console=true"]));
 
   assert (List.length (fake_log#get ()) = 0);
-  let s = p ["-cvv"] in
+  let s = p ["-cvv"; "run"] in
   assert_equal No s.gui;
   assert_equal 2 s.verbosity;
   assert (List.length (fake_log#get ()) > 0);
 
-  let s = p ["run"; "-wgdb"; "foo"] in
-  equal_str_lists ["run"; "foo"] s.args;
-  assert_equal [("-w", Wrapper "gdb")] s.extra_options;
+  let _, flags, args = p_full ["run"; "-wgdb"; "foo"] in
+  equal_str_lists ["run"; "foo"] args;
+  assert_equal [("-w", `Wrapper "gdb")] flags;
 
-  assert_raises_fallback (lazy (p ["-c"; "--version"]));
+  let v = fake_system#collect_output (fun () -> (
+    try ignore @@ p ["-c"; "--version"]; assert false;
+    with System_exit 0 -> ()
+  ))
+  in assert (Str.string_match (Str.regexp_string "0install (zero-install)") v 0);
 
-  let s = p ["--version"; "1.2"; "run"; "foo"] in
-  equal_str_lists ["run"; "foo"] s.args;
-  assert_equal [("--version", RequireVersion "1.2")] s.extra_options;
+  let _, flags, args = p_full ["--version"; "1.2"; "run"; "foo"] in
+  equal_str_lists ["run"; "foo"] args;
+  assert_equal [("--version", `RequireVersion "1.2")] flags;
 
-  let s = p ["digest"; "-m"; "archive.tgz"] in
-  equal_str_lists ["digest"; "archive.tgz"] s.args;
-  assert_equal [("-m", ShowManifest)] s.extra_options;
+  let _, flags, args = p_full ["digest"; "-m"; "archive.tgz"] in
+  equal_str_lists ["digest"; "archive.tgz"] args;
+  assert_equal [("-m", `ShowManifest)] flags;
 
-  let s = p ["run"; "-m"; "main"; "app"] in
-  equal_str_lists ["run"; "app"] s.args;
-  assert_equal [("-m", MainExecutable "main")] s.extra_options;
+  let _, flags, args = p_full ["run"; "-m"; "main"; "app"] in
+  equal_str_lists ["run"; "app"] args;
+  assert_equal [("-m", `MainExecutable "main")] flags;
 ;;
 
 let test_run_real tmpdir =
-  let build_dir = Unix.getenv "OCAML_BUILDDIR" in
   Unix.putenv "ZEROINSTALL_PORTABLE_BASE" tmpdir;
   let sels_path =
     if on_windows then ".\\test_selections_win.xml"
     else "./test_selections.xml" in
-  let argv = [build_dir +/ "0install"; "run"; sels_path] in
+  let argv = [Fake_system.build_dir +/ "0install"; "run"; sels_path] in
   let line = Support.Utils.check_output real_system Support.Utils.input_all argv in
   assert_str_equal "Hello World\n" line
 
+(* This is really just for the coverage testing, which test_run_real doesn't do. *)
+let test_run_fake tmpdir =
+  let (config, fake_system) = Fake_system.get_fake_config (Some tmpdir) in
+  let sels_path = Support.Utils.abspath Fake_system.real_system (
+    if on_windows then ".\\test_selections_win.xml"
+    else "./test_selections.xml"
+  ) in
+  fake_system#add_file sels_path sels_path;
+  try Cli.handle config ["run"; sels_path; "--"; "--arg"]; assert false
+  with Fake_system.Would_exec (search, _env, args) ->
+    assert (not search);
+    if on_windows then equal_str_lists ["c:\\cygwin\\bin\\env.exe"; "my-prog"; "Hello World"; "--"; "--arg"] args
+    else equal_str_lists ["/usr/bin/env"; "my-prog"; "Hello World"; "--"; "--arg"] args
+
 let test_escaping () =
-  let open Escape in
+  let open Zeroinstall.Escape in
   let wfile s = if on_windows then "file%3a" ^ s else "file:" ^ s in
   List.iter (fun (a, b) -> assert_str_equal a b) [
     (* Escaping *)
@@ -151,16 +184,19 @@ let suite =
   Test_utils.suite;
   Test_solver.suite;
   Test_distro.suite;
+  Test_0install.suite;
+  Test_apps.suite;
  "test_basedir">:: test_basedir;
  "test_option_parsing">:: (fun () -> collect_logging test_option_parsing);
  "test_run_real">:: (fun () -> collect_logging (with_tmpdir test_run_real));
+ "test_run_fake">:: (fun () -> collect_logging (with_tmpdir test_run_fake));
  "test_escaping">:: test_escaping;
  "test_canonical">:: (fun () ->
    let system = (new fake_system None :> system) in
    let check arg uri =
-     assert_str_equal uri (Select.canonical_iface_uri system arg) in
+     assert_str_equal uri (Generic_select.canonical_iface_uri system arg) in
    let check_err arg =
-     try (ignore @@ Select.canonical_iface_uri system arg); assert false
+     try (ignore @@ Generic_select.canonical_iface_uri system arg); assert false
      with Safe_exception _ -> () in
    check "http://example.com/foo.xml" "http://example.com/foo.xml";
    check "alias:./v1-alias" "http://example.com/alias1.xml";
@@ -171,7 +207,7 @@ let suite =
    let test expected vars =
      let system = new fake_system None in
      List.iter (fun (k, v) -> system#putenv k v) vars;
-     equal_str_lists expected @@ List.map Locale.format_lang @@ Locale.get_langs (system :> system) in
+     equal_str_lists expected @@ List.map Support.Locale.format_lang @@ Support.Locale.get_langs (system :> system) in
 
    test ["en_GB"] [];
    test ["fr_FR"; "en_GB"] [("LANG", "fr_FR")];

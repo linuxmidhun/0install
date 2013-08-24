@@ -167,10 +167,27 @@ def get_selections_for(requirements, config, options, select_only, download_only
 def handle(config, options, args):
 	"""@type config: L{zeroinstall.injector.config.Config}
 	@type args: [str]"""
-	if len(args) != 1:
+	if len(args) == 1:
+		select_only = True
+		download_only = False
+		arg = args[0]
+	elif len(args) == 2:
+		if args[0] == 'for-select':
+			select_only = True
+			download_only = False
+		elif args[0] == 'for-download':
+			select_only = False
+			download_only = True
+		elif args[0] == 'for-run':
+			select_only = False
+			download_only = False
+		else:
+			assert 0, args
+		arg = args[1]
+	else:
 		raise UsageError()
 
-	app = config.app_mgr.lookup_app(args[0], missing_ok = True)
+	app = config.app_mgr.lookup_app(arg, missing_ok = True)
 	if app is not None:
 		old_sels = app.get_selections()
 
@@ -184,12 +201,12 @@ def handle(config, options, args):
 				print("  {uri}: {expr}".format(uri = uri, expr = expr))
 			print()
 	else:
-		iface_uri = model.canonical_iface_uri(args[0])
+		iface_uri = model.canonical_iface_uri(arg)
 		requirements = None
 		changes = False
 
 	sels = get_selections(config, options, iface_uri,
-				select_only = True, download_only = False, test_callback = None, requirements = requirements)
+				select_only = select_only, download_only = download_only, test_callback = None, requirements = requirements)
 	if not sels:
 		# Aborted by user
 		if options.xml:

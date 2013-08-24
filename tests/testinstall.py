@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from basetest import BaseTest, TestStores, StringIO, BytesIO, ExecMan, BackgroundException
-import sys, os, tempfile, subprocess, shutil
+import sys, os, tempfile, subprocess, shutil, shlex
 import unittest
 
 sys.path.insert(0, '..')
@@ -89,25 +89,25 @@ class TestInstall(BaseTest):
 		assert 'Runner' in out, out
 
 	def testDownload(self):
-		out, err = self.run_0install(['download'])
+		out, err = self.run_ocaml(['download'])
 		assert out.lower().startswith("usage:")
 		assert '--show' in out
 
-		out, err = self.run_0install(['download', 'Local.xml', '--show'])
+		out, err = self.run_ocaml(['download', 'Local.xml', '--show'])
 		assert not err, err
 		assert 'Version: 0.1' in out
 
 		local_uri = model.canonical_iface_uri('Local.xml')
-		out, err = self.run_0install(['download', 'Local.xml', '--xml'])
+		out, err = self.run_ocaml(['download', 'Local.xml', '--xml'])
 		assert not err, err
 		sels = selections.Selections(qdom.parse(BytesIO(str(out).encode('utf-8'))))
 		assert sels.selections[local_uri].version == '0.1'
 
-		out, err = self.run_0install(['download', 'Local.xml', '--show', '--with-store=/foo'])
+		out, err = self.run_ocaml(['download', 'Local.xml', '--show', '--with-store=/foo'])
 		assert not err, err
-		assert self.config.stores.stores[-1].dir == '/foo'
+		#assert self.config.stores.stores[-1].dir == '/foo'
 
-		out, err = self.run_0install(['download', '--offline', 'selections.xml'])
+		out, err = self.run_ocaml(['download', '--offline', 'selections.xml'])
 		assert 'Would download' in err
 		self.config.network_use = model.network_full
 
@@ -120,7 +120,7 @@ class TestInstall(BaseTest):
 		assert 'Version: 1\n' in out
 
 		out, err = self.run_0install(['download', '--offline', 'selections.xml', '--show'])
-		assert '/fake_store' in out
+		assert '/fake_store' in out, (out, err)
 		self.config.network_use = model.network_full
 
 	def testDownloadSelections(self):
@@ -324,12 +324,12 @@ class TestInstall(BaseTest):
 		assert 'http://example.com:8000/Hello.xml\n' == out, repr(out)
 
 	def testRun(self):
-		out, err = self.run_0install(['run'])
+		out, err = self.run_ocaml(['run'])
 		assert out.lower().startswith("usage:")
 		assert 'URI' in out, out
 
 
-		out, err = self.run_0install(['run', '--dry-run', 'runnable/Runnable.xml', '--help'])
+		out, err = self.run_ocaml(['run', '--dry-run', 'runnable/Runnable.xml', '--help'])
 		assert not err, err
 		assert 'arg-for-runner' in out, out
 		assert '--help' in out, out
@@ -404,7 +404,7 @@ class TestInstall(BaseTest):
 		assert not err, err
 
 		# Run
-		out, err = self.run_0install(['run', '--dry-run', 'local-app'])
+		out, err = self.run_ocaml(['run', '--dry-run', 'local-app'])
 		assert '[dry-run] would execute:' in out, out
 		assert '/test-echo' in out, out
 		assert not err, err
@@ -499,17 +499,18 @@ class TestInstall(BaseTest):
 		assert "No such application 'local-app'" in err, err
 
 	def check_man(self, args, expected):
-		try:
-			out, err = self.run_0install(['man'] + args)
-			assert 0, (out, err)
-		except ExecMan as ex:
-			if len(ex.man_args) == 2:
-				arg = ex.man_args[1]
-				if '/tests/' in arg:
-					arg = 'tests/' + ex.man_args[1].rsplit('/tests/', 1)[1]
-				self.assertEqual(expected, arg)
-			else:
-				self.assertEqual(expected, ex.man_args)
+		out, err = self.run_ocaml(['--dry-run', 'man'] + args)
+		assert '[dry-run] man' in out, (out, err)
+		args = out[len('[dry-run] man '):]
+
+		man_args = tuple(['man'] + shlex.split(args))
+		if len(man_args) == 2:
+			arg = man_args[1]
+			if '/tests/' in arg:
+				arg = 'tests/' + man_args[1].rsplit('/tests/', 1)[1]
+			self.assertEqual(expected, arg)
+		else:
+			self.assertEqual(expected, man_args)
 
 	def testUpdateAlias(self):
 		local_feed = os.path.join(mydir, 'Local.xml')
@@ -522,7 +523,7 @@ class TestInstall(BaseTest):
 		self.assertEqual("", out)
 
 	def testMan(self):
-		out, err = self.run_0install(['man', '--help'])
+		out, err = self.run_ocaml(['man', '--help'])
 		assert out.lower().startswith("usage:")
 
 		# Wrong number of args: pass-through
@@ -544,7 +545,7 @@ class TestInstall(BaseTest):
 		with open(launcher_script, 'w') as stream:
 			alias.write_script(stream, model.canonical_iface_uri(binary_feed), None)
 
-		out, err = self.run_0install(['man', 'my-binary-alias'])
+		out, err = self.run_ocaml(['man', 'my-binary-alias'])
 		assert not err, err
 		assert "No matching manpage was found for 'my-binary-alias'" in out, out
 

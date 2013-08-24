@@ -6,8 +6,6 @@
 
 (** {2 Types} *)
 
-exception Fallback_to_Python
-
 open Support.Common
 
 exception Safe_exception = Support.Common.Safe_exception
@@ -21,7 +19,8 @@ type network_use = Full_network | Minimal_network | Offline
 
 type config = {
   basedirs: Support.Basedir.basedirs;
-  mutable stores: string list;
+  mutable stores: filepath list;
+  mutable extra_stores: filepath list;      (* (subset of stores; passed to Python slave with --with-store) *)
   abspath_0install: filepath;
 
   mutable system : Support.Common.system;
@@ -39,10 +38,6 @@ type config = {
 let hours = 60 * 60         (* Seconds per hour *)
 
 let days = 24 * hours       (* Seconds per day *)
-
-let re_colon = Str.regexp_string ":"
-let re_equals = Str.regexp_string "="
-let re_tab = Str.regexp_string "\t"
 
 (** {2 Relative configuration paths (e.g. under ~/.config)} *)
 

@@ -4,60 +4,78 @@
 
 (** The "0install show" command *)
 
-open General
+open Zeroinstall.General
 open Support.Common
 open Options
 module Qdom = Support.Qdom
+module Selections = Zeroinstall.Selections
+module Apps = Zeroinstall.Apps
 
 let make_selection_map sels =
   let add_selection m sel =
     StringMap.add (ZI.get_attribute "interface" sel) sel m
   in ZI.fold_left ~f:add_selection StringMap.empty sels "selection"
 
+class indenter (printer : string -> unit) =
+  object
+    val mutable indentation = ""
+
+    method print msg =
+      printer (indentation ^ msg ^ "\n")
+
+    method with_indent extra (fn:unit -> unit) =
+      let old = indentation in
+      indentation <- indentation ^ extra;
+      fn ();
+      indentation <- old
+  end
+
 let show_human config sels =
-  let open Format in
+  let first = ref true in
+  let indenter = new indenter config.system#print_string in
+  let printf fmt =
+    let do_print msg = indenter#print (msg:string) in
+    Printf.ksprintf do_print fmt in
   try
     let seen = Hashtbl.create 10 in (* detect cycles *)
     let index = make_selection_map sels in
 
-    open_box 0;
-
-    let rec print_node uri commands =
+    let rec print_node (uri:string) commands =
       if not (Hashtbl.mem seen uri) then (
         Hashtbl.add seen uri true;
 
-        print_cut();
-        print_cut();
-        open_vbox 2;
+        if !first then
+          first := false
+        else
+          printf "";
 
-        printf "- URI: %s@," uri;
+        printf "- URI: %s" uri;
+        indenter#with_indent "  " (fun () ->
+          let sel =
+            try Some (StringMap.find uri index)
+            with Not_found -> None in
 
-        let sel =
-          try Some (StringMap.find uri index)
-          with Not_found -> None in
-
-        let () =
           match sel with
           | None ->
               printf "No selected version";
           | Some impl ->
-              printf "Version: %s@," (ZI.get_attribute "version" impl);
+              (* printf "ID: %s" (ZI.get_attribute "id" impl); *)
+              printf "Version: %s" (ZI.get_attribute "version" impl);
               (* print indent + "  Command:", command *)
               let path = match Selections.make_selection impl with
-                | Selections.PackageSelection -> sprintf "(%s)" @@ ZI.get_attribute "id" impl
+                | Selections.PackageSelection -> Printf.sprintf "(%s)" @@ ZI.get_attribute "id" impl
                 | Selections.LocalSelection path -> path
                 | Selections.CacheSelection digests ->
-                    match Stores.lookup_maybe config.system digests config.stores with
+                    match Zeroinstall.Stores.lookup_maybe config.system digests config.stores with
                     | None -> "(not cached)"
                     | Some path -> path in
 
-              open_vbox 0;
               printf "Path: %s" path;
 
               let deps = ref @@ Selections.get_dependencies ~restricts:false impl in
 
               ListLabels.iter commands ~f:(fun c ->
-                let command = Command.get_command c impl in
+                let command = Zeroinstall.Command.get_command c impl in
                 deps := !deps @ Selections.get_dependencies ~restricts:false command
               );
 
@@ -65,29 +83,25 @@ let show_human config sels =
                 let child_iface = ZI.get_attribute "interface" child in
                 print_node child_iface (Selections.get_required_commands child)
               );
-              close_box() in
-        close_box()
+        )
       )
     in
 
     let root_iface = ZI.get_attribute "interface" sels in
-    let () = match ZI.get_attribute_opt "command" sels with
+    match ZI.get_attribute_opt "command" sels with
       | None | Some "" -> print_node root_iface []
-      | Some command -> print_node root_iface [command] in
-
-    close_box();
-    print_newline()
+      | Some command -> print_node root_iface [command]
   with ex ->
-    print_newline();
     raise ex
 
 let show_xml sels =
   let out = Xmlm.make_output @@ `Channel stdout in
+  Qdom.reindent sels;
   Qdom.output out sels;
   output_string stdout "\n"
 
 let show_restrictions (system:system) r =
-  let open Requirements in
+  let open Zeroinstall.Requirements in
   let print = Support.Utils.print in
   if r.extra_restrictions <> StringMap.empty then (
     print system "User-provided restrictions in force:";
@@ -97,20 +111,20 @@ let show_restrictions (system:system) r =
     system#print_string "\n"
   )
 
-let handle options args =
+let handle options flags args =
+  let s_root = ref false in
+  let s_xml = ref false in
+
+  Support.Argparse.iter_options flags (function
+    | #common_option as o -> Common_options.process_common_option options o
+    | `ShowRoot -> s_root := true
+    | `ShowXML -> s_xml := true
+  );
+
   let config = options.config in
   let system = config.system in
   match args with
   | [arg] -> (
-      let s_root = ref false in
-      let s_xml = ref false in
-
-      Support.Argparse.iter_options options.extra_options (function
-        | ShowRoot -> s_root := true
-        | ShowXML -> s_xml := true
-        | _ -> raise_safe "Unknown option"
-      );
-
       let sels = match Apps.lookup_app config arg with
       | Some app_path ->
           let r = Apps.get_requirements system app_path in
@@ -126,4 +140,4 @@ let handle options args =
       | (false, false) -> show_human config sels
       | (true, true) -> raise_safe "Can't use --xml with --root"
   )
-  | _ -> raise Support.Argparse.Usage_error
+  | _ -> raise (Support.Argparse.Usage_error 1)

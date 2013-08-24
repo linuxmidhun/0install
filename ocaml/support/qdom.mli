@@ -43,6 +43,9 @@ val simple_content : element -> string
     e.g. [output (Xmlm.make_output @@ `Channel stdout) root] *)
 val output : Xmlm.output -> element -> unit
 
+(** Write a (sub)tree to a string. *)
+val to_utf8 : element -> string
+
 (** [prepend_child child parent] makes [child] the first child of [parent]. *)
 val prepend_child : element -> element -> unit
 
@@ -54,6 +57,14 @@ val get_attribute_opt : Xmlm.name -> element -> string option
 
 (** Sets the given non-namespaced attribute. *)
 val set_attribute : string -> string -> element -> unit
+
+(** Compare two elements and return -1, 0 or 1.
+    Owner document, namespace prefixes, row/column source position and attribute order are ignored. *)
+val compare_nodes : ignore_whitespace:bool -> element -> element -> int
+
+(** Add or remove whitespace to indent the document nicely. Nodes with simple content
+    (e.g. [<name>Bob</name>] do not have their content changed. *)
+val reindent : element -> unit
 
 module type NsType = sig val ns : string end
 

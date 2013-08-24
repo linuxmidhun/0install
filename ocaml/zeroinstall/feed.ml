@@ -38,7 +38,7 @@ type impl_type =
   | LocalImpl of filepath
   | PackageImpl of package_impl
 
-type restriction = (string * (implementation -> bool))
+type restriction = < to_string : string; meets_restriction : implementation -> bool >
 
 and binding = Qdom.element
 
@@ -87,6 +87,15 @@ let parse_stability ~from_user s =
   | "packaged" -> if_from_user Packaged
   | "preferred" -> if_from_user Preferred
   | x -> raise_safe "Unknown stability level '%s'" x
+
+let format_stability = function
+  | Insecure -> "insecure"
+  | Buggy -> "buggy"
+  | Developer -> "developer"
+  | Testing -> "testing"
+  | Stable -> "stable"
+  | Packaged -> "packaged"
+  | Preferred -> "preferred"
 
 type feed_overrides = {
   last_checked : float option;
@@ -154,16 +163,19 @@ let make_command doc name ?(new_attr="path") path : command =
   }
 
 let make_distribtion_restriction distros =
-  let check impl =
-    ListLabels.exists (Str.split U.re_space distros) ~f:(fun distro ->
-      match distro, impl.impl_type with
-      | "0install", PackageImpl _ -> false
-      | "0install", CacheImpl _ -> true
-      | "0install", LocalImpl _ -> true
-      | distro, PackageImpl {package_distro;_} -> package_distro = distro
-      | _ -> false
-    ) in
-  ("distribution:" ^ distros, check)
+  object
+    method meets_restriction impl =
+      ListLabels.exists (Str.split U.re_space distros) ~f:(fun distro ->
+        match distro, impl.impl_type with
+        | "0install", PackageImpl _ -> false
+        | "0install", CacheImpl _ -> true
+        | "0install", LocalImpl _ -> true
+        | distro, PackageImpl {package_distro;_} -> package_distro = distro
+        | _ -> false
+      )
+
+    method to_string = "distribution:" ^ distros
+  end
 
 let get_attr key impl =
   try AttrMap.find ("", key) impl.props.attrs
@@ -176,13 +188,29 @@ let get_attr_opt key map =
 let parse_version_element elem =
   let before = ZI.get_attribute_opt "before" elem in
   let not_before = ZI.get_attribute_opt "not-before" elem in
-  let s = match before, not_before with
-  | None, None -> "no restriction!"
-  | Some low, None -> low ^ " <= version"
-  | None, Some high -> "version < " ^ high
-  | Some low, Some high -> low ^ " <= version < " ^ high in
   let test = Versions.make_range_restriction not_before before in
-  (s, (fun impl -> test (impl.parsed_version)))
+  object
+    method meets_restriction impl = test impl.parsed_version
+    method to_string =
+      match not_before, before with
+      | None, None -> "no restriction!"
+      | Some low, None -> "version " ^ low ^ ".."
+      | None, Some high -> "version ..!" ^ high
+      | Some low, Some high -> "version " ^ low ^ "..!" ^ high
+  end
+
+let make_version_restriction expr =
+  let test =
+    try Versions.parse_expr expr
+    with Safe_exception (ex_msg, _) as ex ->
+      let msg = Printf.sprintf "Can't parse version restriction '%s': %s" expr ex_msg in
+      log_warning ~ex:ex "%s" msg;
+      (fun _ -> false)
+  in
+  object
+    method meets_restriction impl = test impl.parsed_version
+    method to_string = "version " ^ expr
+  end
 
 let parse_dep local_dir dep =
   let iface =
@@ -217,15 +245,7 @@ let parse_dep local_dir dep =
 
   let restrictions = match ZI.get_attribute_opt "version" dep with
     | None -> restrictions
-    | Some expr -> (
-        try
-          let test = Versions.parse_expr expr in
-          (expr, fun impl -> test (impl.parsed_version))
-        with Safe_exception (ex_msg, _) as ex ->
-          let msg = Printf.sprintf "Can't parse version restriction '%s': %s" expr ex_msg in
-          log_warning ~ex:ex "%s" msg;
-          (expr, fun _ -> false)
-        ) :: restrictions
+    | Some expr -> make_version_restriction expr :: restrictions
   in
 
   if ZI.tag dep = Some "runner" then (
@@ -535,6 +555,10 @@ let get_implementations feed =
 
 let is_source impl = impl.machine = Some "src"
 
+let get_command_opt command_name commands =
+  try Some (StringMap.find command_name commands)
+  with Not_found -> None
+
 let get_command impl command_name : command =
   try StringMap.find command_name impl.props.commands
   with Not_found -> Qdom.raise_elem "Command '%s' not found in" command_name impl.qdom
@@ -579,7 +603,7 @@ let get_langs impl =
   let langs =
     try Str.split U.re_space @@ AttrMap.find ("", "langs") impl.props.attrs
     with Not_found -> ["en"] in
-  Support.Utils.filter_map ~f:Locale.parse_lang langs
+  Support.Utils.filter_map ~f:Support.Locale.parse_lang langs
 
 (** Is this implementation in the cache? *)
 let is_available_locally config impl =

@@ -4,9 +4,13 @@
 
 (** Tab-completion for command-line arguments *)
 
-open General
+open Zeroinstall.General
 open Support.Common
 open Support.Argparse
+open Options
+module Apps = Zeroinstall.Apps
+module Feed = Zeroinstall.Feed
+module Feed_cache = Zeroinstall.Feed_cache
 
 let starts_with = Support.Utils.starts_with
 let slice = Support.Utils.slice
@@ -80,11 +84,11 @@ class virtual completer config =
 
 (* 0install <Tab> *)
 let complete_command (completer:completer) raw_options prefix =
-  let add s (name, _handler, _values) = StringSet.add name s in
+  let add s (name, _values) = StringSet.add name s in
   let options_used = List.fold_left add StringSet.empty raw_options in
 
-  let commands = List.filter (fun (full, _) -> starts_with full prefix) Cli.command_options in
-  let compatible_with_command (_name, (opts, _help)) = StringSet.subset options_used (Cli.set_of_option_names opts) in
+  let commands = List.filter (fun (full, _) -> starts_with full prefix) Cli.subcommands in
+  let compatible_with_command (_name, subcommand) = StringSet.subset options_used (Cli.set_of_option_names subcommand#options) in
   let valid_commands = List.filter compatible_with_command commands in
 
   let complete_commands = if List.length valid_commands = 0 then commands else valid_commands in
@@ -270,7 +274,7 @@ let complete_version completer ~range ~maybe_app target pre =
           "" in
 
       let check pv =
-        let v = Versions.format_version pv in
+        let v = Zeroinstall.Versions.format_version pv in
         let vexpr = v_prefix ^ v in
         if starts_with vexpr pre then Some vexpr else None in
       let all_versions = List.map Feed.get_version @@ Feed.get_implementations feed in
@@ -300,7 +304,7 @@ let complete_option_value (completer:completer) args (_, handler, values, carg) 
   | CpuType -> complete_from_list ["src"; "i386"; "i486"; "i586"; "i686"; "ppc"; "ppc64"; "x86_64"]
   | OsType -> complete_from_list ["Cygwin"; "Darwin"; "FreeBSD"; "Linux"; "MacOSX"; "Windows"]
   | Message -> ()
-  | HashType -> complete_from_list @@ Manifest.get_algorithm_names ()
+  | HashType -> complete_from_list @@ Zeroinstall.Manifest.get_algorithm_names ()
   | IfaceURI -> (
       match args with
       | _ :: app :: _ -> (
@@ -336,7 +340,7 @@ let handle_complete config = function
       | CompleteOptionName prefix ->
           let possible_options = match args with
           | cmd :: _ -> (
-              try fst (List.assoc cmd command_options) @ common_options
+              try let subcommand = List.assoc cmd subcommands in subcommand#options @ common_options
               with Not_found -> spec.options_spec
           )
           | _ -> spec.options_spec in

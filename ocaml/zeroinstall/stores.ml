@@ -6,10 +6,13 @@
 
 open General
 open Support.Common
+module U = Support.Utils
 
-type stores = string list;;
+type stores = string list
 
-type digest = (string * string);;
+type digest = (string * string)
+
+type available_digests = (string, bool) Hashtbl.t
 
 exception Not_stored of string;;
 
@@ -42,10 +45,25 @@ let get_default_stores basedir_config =
   let open Support.Basedir in
   List.map (fun prefix -> prefix +/ "0install.net" +/ "implementations") basedir_config.cache
 
-(* (for parsing <implementation> and <selection> elements) *)
+let get_available_digests (system:system) stores =
+  let digests = Hashtbl.create 1000 in
+  let scan_dir dir =
+    match system#readdir dir with
+    | Success items ->
+        for i = 0 to Array.length items - 1 do
+          Hashtbl.add digests items.(i) true
+        done
+    | Problem _ -> log_debug "Can't scan %s" dir
+    in
+  List.iter scan_dir stores;
+  digests
+
+let check_available available_digests digests =
+  List.exists (fun d -> Hashtbl.mem available_digests (format_digest d)) digests
+
 let get_digests elem =
   let id = ZI.get_attribute "id" elem in
-  let init = match Str.bounded_split_delim re_equals id 2 with
+  let init = match Str.bounded_split_delim U.re_equals id 2 with
   | [key; value] when key = "sha1" || key = "sha1new" || key = "sha256" -> [(key, value)]
   | _ -> [] in
 

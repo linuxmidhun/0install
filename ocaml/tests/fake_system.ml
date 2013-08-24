@@ -3,8 +3,9 @@
  *)
 
 open OUnit
-open General
+open Zeroinstall.General
 open Support.Common
+module Config = Zeroinstall.Config
 
 (* For temporary directory names *)
 let () = Random.self_init ()
@@ -19,6 +20,8 @@ type dentry =
 
 module RealSystem = Support.System.RealSystem(Unix)
 let real_system = new RealSystem.real_system
+
+let build_dir = Support.Utils.handle_exceptions (fun () -> Support.Utils.getenv_ex real_system "OCAML_BUILDDIR") ()
 
 let make_stat st_perm kind =
   let open Unix in {
@@ -36,11 +39,17 @@ let make_stat st_perm kind =
     st_ctime = 0.0;
   }
 
+exception Would_exec of (bool * string array option * string list)
+exception Would_spawn of (bool * string array option * string list)
+
+let src_dir = Filename.dirname @@ Filename.dirname @@ Sys.getcwd ()
+let test_0install = src_dir +/ "0install"           (* Pretend we're running from here so we find 0launch *)
 
 class fake_system tmpdir =
   let extra_files : dentry StringMap.t ref = ref StringMap.empty in
 
   let check_read path =
+    (* log_info "check_read(%s)" path; *)
     if Filename.is_relative path then path
     else (
       try
@@ -49,20 +58,33 @@ class fake_system tmpdir =
         | File (_mode, redirect_path) ->
             redirect_path
       with Not_found ->
-        match tmpdir with
-        | Some dir when Support.Utils.starts_with path dir -> path
-        | _ -> failwith ("Attempt to read from " ^ path)
+        if Support.Utils.starts_with path src_dir then path
+        else (
+          match tmpdir with
+          | Some dir when Support.Utils.starts_with path dir -> path
+          | _ -> raise_safe "Attempt to read from '%s'" path
+        )
     ) in
 
   let check_write path =
     match tmpdir with
     | Some dir when Support.Utils.starts_with path dir -> path
-    | _ -> failwith ("Attempt to write to " ^ path) in
+    | _ -> raise_safe "Attempt to write to '%s'" path in
+
+  (* It's OK to check whether these paths exists. We just say they don't,
+     unless they're in extra_files (check there first). *)
+  let hidden_subtree path =
+    if Support.Utils.starts_with path "/var" then
+      match tmpdir with
+      | None -> true
+      | Some tmpdir -> not (Support.Utils.starts_with path tmpdir)
+    else false in
 
   object (self : #system)
-    val now = ref 0.0
+    val now = ref @@ float_of_int @@ 101 * days
     val mutable env = StringMap.empty
     val mutable stdout = None
+    val mutable spawn_handler = None
 
     method collect_output (fn : unit -> unit) =
       let old_stdout = stdout in
@@ -76,7 +98,7 @@ class fake_system tmpdir =
       | None -> failwith s
       | Some b -> Buffer.add_string b s
 
-    val mutable argv = [| "0install" |]
+    val mutable argv = [| test_0install |]
 
     method argv () = argv
     method set_argv new_argv = argv <- new_argv
@@ -107,6 +129,7 @@ class fake_system tmpdir =
       if path = "/usr/bin/0install" then true
       else if path = "C:\\Windows\\system32\\0install.exe" then true
       else if StringMap.mem path !extra_files then true
+      else if StringMap.mem (Filename.dirname path) !extra_files then false
       else if tmpdir = None then false
       else real_system#file_exists (check_read path)
 
@@ -117,7 +140,8 @@ class fake_system tmpdir =
         | Dir (mode, _items) -> Some (make_stat mode S_DIR)
         | File (_mode, target) -> real_system#lstat target
       with Not_found ->
-        real_system#lstat (check_read path)
+        if hidden_subtree path then None
+        else real_system#lstat (check_read path)
 
     method stat path =
       try
@@ -126,16 +150,29 @@ class fake_system tmpdir =
         | Dir (mode, _items) -> Some (make_stat mode S_DIR)
         | File (_mode, target) -> real_system#stat target
       with Not_found ->
-        real_system#stat (check_read path)
+        if hidden_subtree path then None
+        else real_system#stat (check_read path)
 
     method atomic_write open_flags fn path mode = real_system#atomic_write open_flags fn (check_write path) mode
+    method atomic_hardlink ~link_to ~replace = real_system#atomic_hardlink ~link_to:(check_read link_to) ~replace:(check_write replace)
     method unlink = failwith "unlink"
     method rmdir = failwith "rmdir"
 
-    method exec = failwith "exec"
-    method spawn_detach = failwith "spawn_detach"
-    method create_process = failwith "exec"
-    method reap_child = failwith "reap_child"
+    method exec ?(search_path = false) ?env argv =
+      raise (Would_exec (search_path, env, argv))
+
+    method spawn_detach ?(search_path = false) ?env argv =
+      raise (Would_spawn (search_path, env, argv))
+
+    method create_process args new_stdin new_stdout new_stderr =
+      match spawn_handler with
+      | None -> raise (Would_spawn (true, None, args))
+      | Some handler -> handler args new_stdin new_stdout new_stderr
+
+    method set_spawn_handler handler =
+      spawn_handler <- handler
+
+    method reap_child = real_system#reap_child
 
     method getcwd () =
       match tmpdir with
@@ -174,7 +211,12 @@ class fake_system tmpdir =
       add_parent path
 
     method add_dir path items =
-      extra_files := StringMap.add path (Dir (0o755, items)) !extra_files
+      extra_files := StringMap.add path (Dir (0o755, items)) !extra_files;
+      let add_file leaf =
+        let full = path +/ leaf in
+        if not (StringMap.mem full !extra_files) then
+          self#add_file full "" in
+      List.iter add_file items
 
     initializer
       match tmpdir with
@@ -228,10 +270,6 @@ let assert_raises_safe expected_msg fn =
   with Safe_exception (msg, _) ->
     assert_equal expected_msg msg
 
-let assert_raises_fallback fn =
-  try Lazy.force fn; assert_failure "Expected Fallback_to_Python"
-  with Fallback_to_Python -> ()
-
 let temp_dir_name =
   (* Filename.get_temp_dir_name doesn't exist under 3.12 *)
   try Sys.getenv "TEMP" with Not_found ->
@@ -246,13 +284,14 @@ let with_tmpdir fn () =
   Support.Utils.finally (Support.Utils.ro_rmtree real_system) tmppath fn
 
 let get_fake_config tmpdir =
+  Zeroinstall.Python.slave_debug_level := Some Support.Logging.Warning;
   let system = new fake_system tmpdir in
   if tmpdir = None then system#putenv "HOME" "/home/testuser";
-  if on_windows then
-    system#putenv "PATH" "C:\\Windows\\system32;C:\\Windows"
-  else
-    system#putenv "PATH" "/usr/bin:/bin";
-  let my_path =
-    if on_windows then "C:\\Windows\\system32"
-    else "/usr/bin/0install" in
-  (Config.get_default_config (system :> system) my_path, system)
+  if on_windows then (
+    system#putenv "PATH" "C:\\Windows\\system32;C:\\Windows";
+    system#add_file (src_dir +/ "0install-runenv.exe") (build_dir +/ "0install-runenv.exe");
+    system#add_file (src_dir +/ "0launch") (src_dir +/ "0launch")
+  ) else (
+    system#putenv "PATH" "/usr/bin:/bin"
+  );
+  (Config.get_default_config (system :> system) test_0install, system)
