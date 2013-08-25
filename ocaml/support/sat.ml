@@ -205,7 +205,7 @@ module MakeSAT(User : USER) =
     (* Why is [lit] assigned the way it is? For debugging. *)
     let explain_reason problem lit =
       let show_lit_assignment l =
-        let info = VarInfoArray.get l problem.assigns in
+        let info = get_varinfo_for_lit problem l in
         (User.to_string info.obj) ^ "=" ^ (string_of_value info.value) in
       let value = lit_value problem lit in
       if value = Undecided then "undecided!"

@@ -344,7 +344,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n" +
 			 "- http://localhost/diagnostics.xml -> (problem)\n" +
 			 "    http://localhost/top.xml 1 requires 'foo' command\n" +
-			 "    No usable implementations:\n" +
+			 "    Rejected candidates:\n" +
 			 "      diag-5 (5): No foo command\n" +
 			 "- http://localhost/top.xml -> 1 (1)")
 
@@ -360,7 +360,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    http://localhost/top.xml 1 requires distribution:foo\n"
-			 "    No usable implementations:\n"
+			 "    Rejected candidates:\n"
 			 "      diag-5 (5): Incompatible with restriction: distribution:foo\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
@@ -376,7 +376,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    http://localhost/top.xml 1 requires version 100..!200\n"
-			 "    No usable implementations:\n"
+			 "    Rejected candidates:\n"
 			 "      diag-5 (5): Incompatible with restriction: version 100..!200\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
@@ -409,7 +409,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    http://localhost/top.xml 1 requires <impossible: Can't parse version restriction '100..200': End of range must be exclusive (use '..!200', not '..200')>\n"
-			 "    No usable implementations:\n"
+			 "    Rejected candidates:\n"
 			 "      diag-5 (5): Incompatible with restriction: <impossible: Can't parse version restriction '100..200': End of range must be exclusive (use '..!200', not '..200')>\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 		logger.setLevel(logging.WARNING)
@@ -428,7 +428,7 @@ class TestSolver(BaseTest):
 			 "Can't find all required implementations:\n"
 			 "- http://localhost/diagnostics.xml -> (problem)\n"
 			 "    http://localhost/top.xml 1 requires version 100..\n"
-			 "    No usable implementations:\n"
+			 "    Rejected candidates:\n"
 			 "      diag-5 (5): Incompatible with restriction: version 100..\n"
 			 "- http://localhost/top.xml -> 1 (1)")
 
@@ -544,7 +544,7 @@ class TestSolver(BaseTest):
 		    "Can't find all required implementations:\n"
 		    "- http://localhost/diagnostics-old.xml -> (problem)\n"
 		    "    Replaced by (and therefore conflicts with) http://localhost/diagnostics.xml\n"
-		    "    No usable implementations:\n"
+		    "    Rejected candidates:\n"
 		    "      diag-5 (5): Conflicts with http://localhost/diagnostics.xml\n"
 		    "- http://localhost/diagnostics.xml -> 5 (diag-5)\n"
 		    "    Replaces (and therefore conflicts with) http://localhost/diagnostics-old.xml\n"

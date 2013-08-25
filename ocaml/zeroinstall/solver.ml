@@ -47,9 +47,9 @@ let partition fn lst =
 
 class type candidates =
   object
-    method get_clause : unit -> S.at_most_one_clause option
-    method get_vars : unit -> S.var list
-    method get_state : S.sat_problem -> decision_state
+    method get_clause : S.at_most_one_clause option
+    method get_vars : S.var list
+    method get_state : decision_state
   end
 
 (* A dummy implementation, used to get diagnostic information if the solve fails. It satisfies all requirements,
@@ -76,9 +76,9 @@ let dummy_command = {
   Feed.command_requires = [];
 }
 
-class impl_candidates (clause : S.at_most_one_clause option) (vars : (S.var * Feed.implementation) list) =
+class impl_candidates sat (clause : S.at_most_one_clause option) (vars : (S.var * Feed.implementation) list) =
   object (_ : #candidates)
-    method get_clause () = clause
+    method get_clause = clause
 
     (** Get just those implementations that have a command with this name. *)
     method get_commands name =
@@ -93,16 +93,27 @@ class impl_candidates (clause : S.at_most_one_clause option) (vars : (S.var * Fe
       Support.Utils.filter_map vars ~f:match_command
 
     (** Get all variables, except dummy_impl (if present) *)
-    method get_real_vars () =
+    method get_real_vars =
       Support.Utils.filter_map vars ~f:(fun (var, impl) ->
         if impl == dummy_impl then None
         else Some var
       )
 
-    method get_vars () =
+    method get_vars =
       List.map (fun (var, _impl) -> var) vars
 
-    method get_state sat =
+    method get_selected =
+      match clause with
+      | None -> None      (* There were never any candidates *)
+      | Some clause ->
+          match S.get_selected clause with
+          | None -> None
+          | Some lit ->
+              match (S.get_varinfo_for_lit sat lit).S.obj with
+                | SolverData.ImplElem impl -> Some (lit, impl)
+                | _ -> assert false
+
+    method get_state =
       match clause with
       | None -> Unselected      (* There were never any candidates *)
       | Some clause ->
@@ -124,14 +135,14 @@ class impl_candidates (clause : S.at_most_one_clause option) (vars : (S.var * Fe
   end
 
 (** Holds all the commands with a given name within an interface. *)
-class command_candidates (clause : S.at_most_one_clause option) (vars : (S.var * Feed.command) list) =
+class command_candidates sat (clause : S.at_most_one_clause option) (vars : (S.var * Feed.command) list) =
   object (_ : #candidates)
-    method get_clause () = clause
+    method get_clause = clause
 
-    method get_vars () =
+    method get_vars =
       List.map (fun (var, _command) -> var) vars
 
-    method get_state sat =
+    method get_state =
       match clause with
       | None -> Unselected      (* There were never any candidates *)
       | Some clause ->
@@ -180,7 +191,7 @@ class ['a, 'b] cache =
       try Some (Hashtbl.find table key)
       with Not_found -> None
 
-    method get_items () =
+    method get_items =
       let r = ref [] in
       Hashtbl.iter (fun k v ->
         r := (k, v) :: !r;
@@ -195,25 +206,13 @@ type scope = {
 
 class type result =
   object
-    method get_selections : unit -> Qdom.element
+    method get_selections : Qdom.element
     method get_details : (scope * S.sat_problem * Impl_provider.impl_provider *
                           (General.iface_uri * bool, impl_candidates) cache * search_key)
   end
 
 (** Create a <selections> document from the result of a solve. *)
-let get_selections sat dep_in_use root_req impl_cache command_cache =
-  let get_selected_impl impl_clause =
-    match impl_clause with
-    | None -> None
-    | Some impl_clause ->
-        match S.get_selected impl_clause with
-        | Some selected_lit -> (
-            match (S.get_varinfo_for_lit sat selected_lit).S.obj with
-            | SolverData.ImplElem impl -> Some impl
-            | _ -> assert false
-        )
-        | None -> None in
-
+let get_selections dep_in_use root_req impl_cache command_cache =
   let root = ZI.make_root "selections" in
   let root_iface =
     match root_req with
@@ -224,12 +223,12 @@ let get_selections sat dep_in_use root_req impl_cache command_cache =
   root.Qdom.attrs <- (("", "interface"), root_iface) :: root.Qdom.attrs;
 
   let was_selected (_, candidates) =
-    match candidates#get_clause () with
+    match candidates#get_clause with
     | None -> false
     | Some clause -> S.get_selected clause <> None in
 
-  let commands = List.filter was_selected @@ command_cache#get_items () in
-  let impls = List.filter was_selected @@ impl_cache#get_items () in
+  let commands = List.filter was_selected @@ command_cache#get_items in
+  let impls = List.filter was_selected @@ impl_cache#get_items in
 
   (* For each implementation, remember which commands we need. *)
   let commands_needed = Hashtbl.create 10 in
@@ -245,10 +244,9 @@ let get_selections sat dep_in_use root_req impl_cache command_cache =
   let impls = List.sort cmp impls in
 
   let add_impl ((iface, _source), impls) : unit =
-    let impl_clause = impls#get_clause () in
-    match get_selected_impl impl_clause with
+    match impls#get_selected with
     | None -> ()      (* This interface wasn't used *)
-    | Some impl ->
+    | Some (_lit, impl) ->
         let attrs = ref impl.Feed.props.Feed.attrs in
         let set_attr name value =
           attrs := Feed.AttrMap.add ("", name) value !attrs in
@@ -382,7 +380,7 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
         let require_command name =
           (* What about optional command dependencies? Looks like the Python doesn't handle that either... *)
           let candidates = command_cache#lookup @@ (name, dep.Feed.dep_iface, false) in
-          S.implies sat ~reason:"dep on command" user_var (candidates#get_vars ()) in
+          S.implies sat ~reason:"dep on command" user_var (candidates#get_vars) in
         List.iter require_command dep.Feed.dep_required_commands;
 
         (* Restrictions on the candidates *)
@@ -420,7 +418,7 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
     let matching_impls = maybe_add_dummy @@ impls in
     let pairs = List.map (fun impl -> (S.add_variable sat (SolverData.ImplElem impl), impl)) matching_impls in
     let impl_clause = if List.length pairs > 0 then Some (S.at_most_one sat (List.map fst pairs)) else None in
-    let data = new impl_candidates impl_clause pairs in
+    let data = new impl_candidates sat impl_clause pairs in
     (data, fun () ->
       (* Conflict with our replacements *)
       let () =
@@ -430,11 +428,11 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
             log_warning "Interface %s replaced-by itself!" iface_uri
         | Some replacement ->
             let handle_replacement () =
-              let our_vars = data#get_real_vars () in
+              let our_vars = data#get_real_vars in
               match impl_cache#peek (replacement, source) with
               | None -> ()  (* We didn't use it, so we can't conflict *)
               | Some replacement_candidates ->
-                  let replacements = replacement_candidates#get_real_vars () in
+                  let replacements = replacement_candidates#get_real_vars in
                   if (our_vars <> [] && replacements <> []) then (
                     (* Must select one implementation out of all candidates from both interfaces.
                        Dummy implementations don't conflict, though. *)
@@ -473,7 +471,7 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
       (var, elem) in
     let vars = List.map make_provides_command commands in
     let command_clause = if List.length vars > 0 then Some (S.at_most_one sat @@ List.map fst vars) else None in
-    let data = new command_candidates command_clause vars in
+    let data = new command_candidates sat command_clause vars in
 
     let process_commands () =
       let depend_on_impl (command_var, command) (impl_var, _command) =
@@ -496,7 +494,7 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
 
   (* This recursively builds the whole problem up. *)
   let candidates = lookup root_req in
-  S.at_least_one sat ~reason:"need root" @@ candidates#get_vars ();          (* Must get what we came for! *)
+  S.at_least_one sat ~reason:"need root" @@ candidates#get_vars;          (* Must get what we came for! *)
 
   (* Setup done; lock to prevent accidents *)
   let locked _ = failwith "building done" in
@@ -517,11 +515,13 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
         None    (* Break cycles *)
       ) else (
         Hashtbl.add seen req true;
+(*
         let () = match req with
           | ReqCommand (command, iface, _source) -> log_warning "check %s %s" iface command
           | ReqIface (iface, _source) -> log_warning "check %s" iface in
+*)
         let candidates = lookup req in
-        match candidates#get_state sat with
+        match candidates#get_state with
         | Unselected -> None
         | Undecided lit -> Some lit
         | Selected deps ->
@@ -561,7 +561,7 @@ let do_solve (impl_provider:Impl_provider.impl_provider) root_scope root_req ~cl
   | Some _solution ->
       Some (
       object (_ : result)
-        method get_selections () = get_selections sat dep_in_use root_req impl_cache command_cache
+        method get_selections = get_selections dep_in_use root_req impl_cache command_cache
 
         method get_details =
           if closest_match then

@@ -92,7 +92,7 @@ let handle options flags args =
         else
           send_status "FAIL";
 
-        let sels = results#get_selections () in
+        let sels = results#get_selections in
         let buf = Buffer.create 1000 in
         let out = Xmlm.make_output @@ `Buffer buf in
         Qdom.output out sels;
@@ -118,7 +118,8 @@ let handle options flags args =
         really_input stdin buf 0 l;
         match Yojson.Basic.from_string buf with
         | `List [`String iface; `String feed; `String id] ->
-            let data = Zeroinstall.Diagnostics.justify_decision options.config feed_provider reqs (iface, feed, id) in
+            let wanted_id = Feed.({feed = feed; id = id}) in
+            let data = Zeroinstall.Diagnostics.justify_decision options.config feed_provider reqs iface wanted_id in
             send_status "SUCCESS";
             Printf.printf "%d\n" (String.length data);
             output_string stdout data;

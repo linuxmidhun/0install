@@ -28,6 +28,18 @@ type acceptability = [
   | rejection
 ]
 
+(* Why did we pick one version over another? *)
+type preferred_reason =
+  | PreferAvailable
+  | PreferDistro 
+  | PreferID 
+  | PreferLang 
+  | PreferMachine 
+  | PreferNonRoot 
+  | PreferOS 
+  | PreferStability 
+  | PreferVersion 
+
 let describe_problem impl =
   let open Feed in
   let spf = Printf.sprintf in
@@ -60,9 +72,15 @@ class type impl_provider =
     (** Return all the implementations of this interface (including from feeds).
         Most preferred implementations should come first. *)
     method get_implementations : scope_filter -> iface_uri -> source:bool -> candidates
+
+    (** Used by Diagnostics. *)
+    method get_watched_compare : (Feed.implementation -> Feed.implementation -> (int * preferred_reason)) option
   end
 
-class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
+class default_impl_provider config ?watch_iface (feed_provider : Feed_cache.feed_provider) =
+  (* If [watch_iface] is set, we store the comparison function for use by Diagnostics. *)
+  let compare_for_watched_iface = ref None in
+
   let do_overrides overrides impls =
     let do_override impl =
       let id = Feed.get_attr "id" impl in
@@ -119,13 +137,13 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
           false in
 
       (* Printf.eprintf "Looking for %s\n" (String.concat "," @@ List.map Locale.format_lang wanted_langs); *)
-      let compare_impls stability_policy a b =
-        let retval = ref 0 in
-        let test = function
+      let compare_impls_full stability_policy a b =
+        let retval = ref (0, PreferID) in
+        let test reason = function
           | 0 -> false
-          | x -> retval := x; true in
-        let test_fn fn =
-          test @@ compare (fn a) (fn b) in
+          | x -> retval := (-x, reason); true in
+        let test_fn reason fn =
+          test reason @@ compare (fn a) (fn b) in
 
         let langs_a = Feed.get_langs a in
         let langs_b = Feed.get_langs b in
@@ -173,53 +191,56 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
 
         ignore (
           (* Preferred versions come first *)
-          test @@ compare (score_true (a.stability = Preferred))
-                          (score_true (b.stability = Preferred)) ||
+          test PreferStability @@ compare (score_true (a.stability = Preferred))
+                                          (score_true (b.stability = Preferred)) ||
 
           (* Languages we understand come first *)
-          test @@ compare (score_langs langs_a) (score_langs langs_b) ||
+          test PreferLang @@ compare (score_langs langs_a) (score_langs langs_b) ||
 
           (* Prefer available implementations next if we have limited network access *)
-          (if config.network_use = Full_network then false else test_fn is_available) ||
+          (if config.network_use = Full_network then false else test_fn PreferAvailable is_available) ||
 
           (* Packages that require admin access to install come last *)
-          test_fn score_requires_root_install ||
+          test_fn PreferNonRoot score_requires_root_install ||
 
           (* Prefer more stable versions, but treat everything over stab_policy the same
             (so we prefer stable over testing if the policy is to prefer "stable", otherwise
             we don't care) *)
-          test_fn score_stability ||
+          test_fn PreferStability score_stability ||
 
           (* Newer versions come before older ones (ignoring modifiers) *)
-          test @@ compare (Versions.strip_modifier a.parsed_version)
-                          (Versions.strip_modifier b.parsed_version) ||
+          test PreferVersion @@ compare (Versions.strip_modifier a.parsed_version)
+                                        (Versions.strip_modifier b.parsed_version) ||
 
           (* Prefer native packages if the main part of the versions are the same *)
-          test_fn score_is_package ||
+          test_fn PreferDistro score_is_package ||
 
           (* Full version compare (after package check, since comparing modifiers between native and non-native
             packages doesn't make sense). *)
-          test @@ compare a.parsed_version b.parsed_version ||
+          test PreferVersion @@ compare a.parsed_version b.parsed_version ||
 
           (* Get best OS *)
-          test @@ compare (score_os a) (score_os b) ||
+          test PreferOS @@ compare (score_os a) (score_os b) ||
 
           (* Get best machine *)
-          test @@ compare (score_machine a) (score_machine b) ||
+          test PreferMachine @@ compare (score_machine a) (score_machine b) ||
 
           (* Slightly prefer languages specialised to our country
             (we know a and b have the same base language at this point) *)
-          test @@ compare (score_country langs_a) (score_country langs_b) ||
+          test PreferLang @@ compare (score_country langs_a) (score_country langs_b) ||
 
           (* Slightly prefer cached versions *)
-          (if config.network_use <> Full_network then false else test_fn is_available) ||
+          (if config.network_use <> Full_network then false else test_fn PreferAvailable is_available) ||
 
           (* Order by ID so the order isn't random *)
-          test @@ compare (Feed.get_attr "id" a) (Feed.get_attr "id" b)
+          test PreferID @@ compare (Feed.get_attr "id" a) (Feed.get_attr "id" b) ||
+          test PreferID @@ compare (Feed.get_attr "from-feed" a) (Feed.get_attr "from-feed" b)
         );
 
-        -(!retval)
+        !retval
         in
+
+      let compare_impls stability_policy a b = fst (compare_impls_full stability_policy a b) in
 
       let get_distro_impls feed =
         match feed_provider#get_distro_impls feed with
@@ -249,6 +270,9 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
             | Some s -> s in
 
           let impls = List.sort (compare_impls stability_policy) @@ List.concat (main_impls :: List.map get_impls extra_feeds) in
+
+          if Some iface = watch_iface then
+            compare_for_watched_iface := Some (compare_impls_full stability_policy);
 
           let replacement =
             match master_feed with
@@ -307,4 +331,6 @@ class default_impl_provider config (feed_provider : Feed_cache.feed_provider) =
       in
 
       {candidates with impls = List.filter do_filter (candidates.impls); rejects = !rejects}
+
+    method get_watched_compare = !compare_for_watched_iface
   end

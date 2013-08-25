@@ -165,7 +165,7 @@ let get_selections options ~refresh reqs mode =
           select_with_refresh()
         )
     | (true, results) ->
-        let sels = results#get_selections () in
+        let sels = results#get_selections in
         if mode = H.Select_only || Zeroinstall.Selections.get_unavailable_selections config ~distro sels = [] then (
           (* (in select mode, we only care that we've made a selection, not that we've cached the implementations) *)
 

@@ -18,6 +18,12 @@ module AttrType =
 
 module AttrMap = Map.Make(AttrType)
 
+(** A globally-unique identifier for an implementation. *)
+type global_id = {
+  feed : string;
+  id : string;
+}
+
 type importance =
   | Dep_essential       (* Must select a version of the dependency *)
   | Dep_recommended     (* Prefer to select a version, if possible *)
@@ -626,3 +632,5 @@ let is_retrievable_without_network cache_impl =
     | Some recipe -> not @@ Recipe.recipe_requires_network recipe
     | None -> false in
   List.exists ok_without_network cache_impl.retrieval_methods
+
+let get_id impl = {feed = get_attr attr_from_feed impl; id = get_attr attr_id impl}

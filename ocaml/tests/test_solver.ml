@@ -100,6 +100,7 @@ let make_solver_test test_elem =
       Hashtbl.add ifaces uri feed in
     let expected_selections = ref (ZI.make_root "missing") in
     let expected_problem = ref "missing" in
+    let justifications = ref [] in
     let process child = match ZI.tag child with
     | Some "interface" -> add_iface child
     | Some "requirements" ->
@@ -110,6 +111,7 @@ let make_solver_test test_elem =
         fails := ZI.get_attribute_opt "fails" child = Some "true"
     | Some "selections" -> expected_selections := child
     | Some "problem" -> expected_problem := trim child.Support.Qdom.last_text_inside
+    | Some "justification" -> justifications := child :: !justifications
     | _ -> failwith "Unexpected element" in
     ZI.iter ~f:process test_elem;
 
@@ -139,14 +141,24 @@ let make_solver_test test_elem =
       let reason = Zeroinstall.Diagnostics.get_failure_reason config result in
       Fake_system.assert_str_equal !expected_problem reason
     else (
-      let actual_sels = result#get_selections () in
+      let actual_sels = result#get_selections in
       assert (ZI.tag actual_sels = Some "selections");
       if ready then (
         let changed = Whatchanged.show_changes (fake_system :> system) !expected_selections actual_sels in
         assert (not changed);
       );
       xml_diff !expected_selections actual_sels
-    )
+    );
+
+    ListLabels.iter !justifications ~f:(fun elem ->
+      let iface = ZI.get_attribute "interface" elem in
+      let g_id = Feed.({
+        feed = iface;
+        id = ZI.get_attribute "id" elem;
+      }) in
+      let reason = Zeroinstall.Diagnostics.justify_decision config feed_provider !reqs iface g_id in
+      Fake_system.assert_str_equal (trim elem.Support.Qdom.last_text_inside) reason
+    );
   )
 
 let suite = "solver">::: [
