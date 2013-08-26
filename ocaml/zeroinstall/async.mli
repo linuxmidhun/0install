@@ -35,6 +35,10 @@ val smash : 'a resolver -> exn -> unit
     the promise and keep the resolver for yourself. *)
 val promise_pair : unit -> ('a promise * 'a resolver)
 
+(** Create a promise that is already fulfilled. This is useful if you want to call an API which expects
+    a promise, but you already know the value. *)
+val make_fulfilled : 'a -> 'a promise
+
 (** Queue up a callback to be invoked when [promise] is resolved (successfull or not).
     If [promise] is already resolved, queue [cb] to be invoked next time we're idle (with [do_soon]).
     @return a new promise for the result of [cb]. *)
@@ -45,9 +49,25 @@ val when_resolved : 'a promise -> ('a resolution -> 'b) -> 'b promise
     also broken, with the same exception. *)
 val when_fulfilled : 'a promise -> ('a -> 'b) -> 'b promise
 
+(** If the promise becomes broken, call [callback ex]. Otherwise, do nothing. *)
+val when_broken : unit promise -> (exn -> unit) -> unit
+
+(** When the promise resolves, pass the resolution to the callback. If the callback throws an exception,
+    it will escape out of the async system. *)
+val when_resolved_ignored : 'a promise -> ('a resolution -> unit) -> unit
+
 (** Get the successful value of a promise. If the promise is broken, re-raises its exception.
     It is an error to call this on a promise which is not yet resolved. *)
 val get_fulfillment : 'a promise -> 'a
 
 (** Returns the exception explaining why the promise was broken. Returns [None] if the promise is not broken. *)
 val get_problem : 'a promise -> exn option
+
+(** Run the top-level loop, processing queued events until the promise resolves. *)
+val toplevel_wait_for : 'a promise -> 'a
+
+(** Run the next queued callback. Returns false if the queue is empty. *)
+val run_one_todo : unit -> bool
+
+(** Check whether a promise has been resolved (i.e. is Fulfilled or Broken). *)
+val is_resolved : 'a promise -> bool

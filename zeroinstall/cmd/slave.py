@@ -201,21 +201,47 @@ def recv_json():
 		return None
 	return json.loads(stdin.read(int(l)).decode('utf-8'))
 
+def do_get_distro_candidates(config, args, xml):
+	master_feed_url, = args
+
+	master_feed = FakeMasterFeed()
+	master_feed.url = master_feed_url
+	master_feed.package_impls = [(elem, elem.attrs, []) for elem in xml.childNodes]
+
+	return config.iface_cache.distro.fetch_candidates(master_feed)
+
+@tasks.async
+def reply_when_done(ticket, blocker):
+	try:
+		if blocker:
+			yield blocker
+			tasks.check(blocker)
+		send_json(["resolved", ticket, ["ok", "-"]])
+	except Exception as ex:
+		logger.warning("async task failed", exc_info = True)
+		send_json(["resolved", ticket, ["error", str(ex)]])
+
+def do_async(config, ticket, request):
+	if request[0] == 'get-distro-candidates':
+		l = stdin.readline().strip()
+		xml = qdom.parse(BytesIO(stdin.read(int(l))))
+		blocker = do_get_distro_candidates(config, request[1:], xml)
+		reply_when_done(ticket, blocker)
+	else:
+		assert false, request
+
 def slave_raw_input(prompt = None):
 	send_json(["input", prompt or ""])
 	return recv_json()
 
-def handle(config, options, args):
-	if args:
-		raise UsageError()
-
-	if options.offline:
-		config.network_use = model.network_offline
-
-	support.raw_input = slave_raw_input
-
+@tasks.async
+def handle_events(config, options):
 	while True:
+		logger.debug("waiting for stdin")
+		yield tasks.InputBlocker(stdin, 'wait for commands from master')
+		logger.debug("reading JSON")
 		request = recv_json()
+		logger.debug("got %s", request)
 		if request is None: break
 		try:
 			command = request[0]
@@ -234,6 +260,9 @@ def handle(config, options, args):
 				l = stdin.readline().strip()
 				xml = qdom.parse(BytesIO(stdin.read(int(l))))
 				response = do_is_distro_package_installed(config, options, xml)
+			elif command == 'invoke-async':
+				do_async(config, request[1], request[2])
+				response = []
 			else:
 				raise SafeException("Internal error: unknown command '%s'" % command)
 			response = ['ok', response]
@@ -246,3 +275,15 @@ def handle(config, options, args):
 			response = ['error', traceback.format_exc().strip()]
 
 		send_json(response)
+
+def handle(config, options, args):
+	if args:
+		raise UsageError()
+
+	if options.offline:
+		config.network_use = model.network_offline
+
+	support.raw_input = slave_raw_input
+
+	blocker = handle_events(config, options)
+	tasks.wait_for_blocker(blocker)

@@ -128,7 +128,7 @@ let make_solver_test test_elem =
         method get_iface_config _uri =
           {Feed_cache.stability_policy = None; Feed_cache.extra_feeds = [];}
 
-        method get_feeds_used () = []
+        method get_feeds_used = []
 
         method have_stale_feeds () = false
       end in
@@ -346,7 +346,7 @@ let suite = "solver">::: [
         method get_iface_config _uri =
           {Feed_cache.stability_policy = None; Feed_cache.extra_feeds = [];}
 
-        method get_feeds_used () = []
+        method get_feeds_used = []
 
         method have_stale_feeds () = false
       end in

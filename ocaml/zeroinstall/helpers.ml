@@ -8,37 +8,13 @@ open Support.Common
 module Basedir = Support.Basedir
 module U = Support.Utils
 module Qdom = Support.Qdom
+module A = Async
 
 type select_mode =
   | Select_only       (* only download feeds, not archives; display "Select" in GUI *)
   | Download_only     (* download archives too; refresh if stale feeds; display "Download" in GUI *)
   | Select_for_run    (* download archives; update stale in background; display "Run" in GUI *)
   | Select_for_update (* like Download_only, but save changes to apps *)
-
-let string_of_ynm = function
-  | Yes -> "yes"
-  | No -> "no"
-  | Maybe -> "maybe"
-
-(** Get some selectsions for these requirements. *)
-let solve_and_download_impls (slave:Python.slave) reqs mode ~refresh ~use_gui =
-  let action = match mode with
-  | Select_only -> "for-select"
-  | Download_only | Select_for_update -> "for-download"
-  | Select_for_run -> "for-run" in
-
-  let opts = `Assoc [
-    ("refresh", `Bool refresh);
-    ("use_gui", `String (string_of_ynm use_gui));
-  ] in
-
-  let read_xml = function
-    | `String "Aborted" -> None
-    | `String s -> Some (Qdom.parse_input None @@ Xmlm.make_input (`String (0, s)))
-    | _ -> raise_safe "Invalid response" in
-  let request : Yojson.Basic.json = `List [`String "select"; `String action; opts; Requirements.to_json reqs] in
-
-  slave#invoke request read_xml
 
 (** Ensure all selections are cached, downloading any that are missing.
     If [distro] is given then distribution packages are also installed, otherwise
@@ -52,6 +28,50 @@ let download_selections config distro sels =
     let request : Yojson.Basic.json = `List [`String "download-selections"; opts] in
 
     U.finally (fun slave -> slave#close) (new Python.slave config) (fun slave ->
-      slave#invoke ~xml:sels request ignore
+      slave#invoke ~xml:sels request (fun j ->
+        if (j <> `String "downloaded") then raise_safe "Unexpected result"
+      )
     )
+  )
+
+let string_of_ynm = function
+  | Yes -> "yes"
+  | No -> "no"
+  | Maybe -> "maybe"
+
+(** Get some selectsions for these requirements. *)
+let solve_and_download_impls config distro (slave:Python.slave) reqs mode ~refresh ~use_gui =
+  if use_gui = No then (
+    let fetcher = new Fetch.fetcher slave in
+    let result = Driver.solve_with_downloads config fetcher distro reqs ~force:refresh ~update_local:refresh in
+    slave#run_async result;
+    match A.get_fulfillment result with
+    | (false, result) -> raise_safe "%s" (Diagnostics.get_failure_reason config result)
+    | (true, result) ->
+        log_info "helpers.solve_and_download_impls : success: %s" (Qdom.to_utf8 result#get_selections);
+        let sels = result#get_selections in
+        let () =
+          match mode with
+          | Select_only -> ()
+          | Download_only | Select_for_update | Select_for_run ->
+              download_selections config (Some distro) sels in
+        Some sels
+  ) else (
+    let action = match mode with
+    | Select_only -> "for-select"
+    | Download_only | Select_for_update -> "for-download"
+    | Select_for_run -> "for-run" in
+
+    let opts = `Assoc [
+      ("refresh", `Bool refresh);
+      ("use_gui", `String (string_of_ynm use_gui));
+    ] in
+
+    let read_xml = function
+      | `String "Aborted" -> None
+      | `String s -> Some (Qdom.parse_input None @@ Xmlm.make_input (`String (0, s)))
+      | _ -> raise_safe "Invalid response" in
+    let request : Yojson.Basic.json = `List [`String "select"; `String action; opts; Requirements.to_json reqs] in
+
+    slave#invoke request read_xml
   )

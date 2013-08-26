@@ -235,9 +235,9 @@ class feed_provider config distro =
     method get_iface_config uri =
       load_iface_config config uri
 
-    method get_feeds_used () =
-      let urls = StringMap.fold (fun uri _value lst -> uri :: lst) !cache [] in
-      StringMap.fold (fun uri value lst -> if value = None then lst else uri :: lst) !distro_cache urls
+    (* Note: excludes distro feeds *)
+    method get_feeds_used =
+      StringMap.fold (fun uri _value lst -> uri :: lst) !cache []
 
     method have_stale_feeds () =
       let check uri = function
