@@ -54,11 +54,11 @@ let handle_exceptions main args =
 ;;
 
 (** Return the first non-[None] result of [fn item] for items in the list. *)
-let rec first_match fn = function
+let rec first_match ~f = function
   | [] -> None
-  | (x::xs) -> match fn x with
+  | (x::xs) -> match f x with
       | Some _ as result -> result
-      | None -> first_match fn xs;;
+      | None -> first_match ~f xs;;
 
 (** List the non-None results of [fn item] *)
 let rec filter_map ~f = function
@@ -230,7 +230,7 @@ let find_in_path (system:system) name =
     let path_var = Str.split_delim re_path_sep path in
     let effective_path = if on_windows then system#getcwd () :: path_var else path_var in
     let test dir = check (dir +/ name) in
-    first_match test effective_path
+    first_match ~f:test effective_path
   )
 ;;
 
@@ -507,3 +507,13 @@ let is_dir system path =
 let touch (system:system) path =
   system#with_open_out [Open_wronly; Open_creat] 0700 path (fun _ch -> ());
   system#set_mtime path @@ system#time ()   (* In case file already exists *)
+
+let read_file (system:system) path =
+  match system#stat path with
+  | None -> raise_safe "File '%s' doesn't exist" path
+  | Some info ->
+      let buf = String.create (info.Unix.st_size) in
+      system#with_open_in [Open_rdonly;Open_binary] 0 path (function ic ->
+        really_input ic buf 0 info.Unix.st_size
+      );
+      buf

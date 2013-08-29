@@ -9,6 +9,8 @@ open Support.Common
 module Q = Support.Qdom
 
 let slave_debug_level = ref None      (* Inherit our logging level *)
+let default_interceptor ?xml:_ _request = None
+let slave_interceptor = ref default_interceptor      (* Override for testing *)
 
 let get_command config args : string list =
   let result = ref [] in
@@ -77,21 +79,22 @@ class slave config =
   let connection = ref None in
   
   let send_json c ?xml request : unit Lwt.t =
-      let data = to_string request in
-      let buf = Buffer.create (String.length data + 20) in
-      Buffer.add_string buf @@ Printf.sprintf "%d\n" (String.length data);
-      Buffer.add_string buf data;
-      let () =
-        match xml with
-        | Some xml ->
-            let xml_data = Q.to_utf8 xml in
-            Buffer.add_string buf @@ Printf.sprintf "%d\n" (String.length xml_data);
-            Buffer.add_string buf xml_data
-        | None -> () in
+    log_info "Sending to Python: %s%s" (to_string request)
+      (match xml with None -> "" | Some xml -> "\n" ^ (Q.to_utf8 xml));
+    let data = to_string request in
+    let buf = Buffer.create (String.length data + 20) in
+    Buffer.add_string buf @@ Printf.sprintf "%d\n" (String.length data);
+    Buffer.add_string buf data;
+    let () =
+      match xml with
+      | Some xml ->
+          let xml_data = Q.to_utf8 xml in
+          Buffer.add_string buf @@ Printf.sprintf "%d\n" (String.length xml_data);
+          Buffer.add_string buf xml_data
+      | None -> () in
 
-      let data = Buffer.contents buf in
-      log_info "Sending to Python: %s" data;
-      Lwt_io.write c#stdin data in
+    let data = Buffer.contents buf in
+    Lwt_io.write c#stdin data in
 
   let pending_replies = Hashtbl.create 10 in
   let take_ticket =
@@ -179,14 +182,18 @@ class slave config =
 
     (** Send a JSON message to the Python slave and return whatever data it sends back. *)
     method invoke_async : 'a. json -> ?xml:Q.element -> (json -> 'a) -> 'a Lwt.t = fun request ?xml parse_fn ->
-      let c = get_connection () in
+      let response =
+        match !slave_interceptor ?xml request with
+        | Some reply -> reply
+        | None ->
+            let c = get_connection () in
 
-      let (response, resolver) = Lwt.wait () in
-      let ticket = take_ticket () in
+            let (response, resolver) = Lwt.wait () in
+            let ticket = take_ticket () in
 
-      Hashtbl.add pending_replies ticket resolver;
-
-      lwt () = send_json c ?xml (`List [`String "invoke"; `String ticket; request]) in
+            Hashtbl.add pending_replies ticket resolver;
+            lwt () = send_json c ?xml (`List [`String "invoke"; `String ticket; request]) in
+            response in
 
       match_lwt response with
         | `List [`String "error"; `String err] -> raise_safe "%s" err

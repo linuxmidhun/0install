@@ -198,7 +198,7 @@ let subcommands = [
   make_subcommand "show"        "APP | SELECTIONS"              Show.handle      @@ common_options @ xml_output @ show_options;
   make_subcommand "download"    "URI"                           Download.handle  @@ common_options @ offline_options @ download_options @ select_options;
   make_subcommand "run"         "URI [ARGS]"                    Run.handle       @@ common_options @ offline_options @ run_options @ generic_select_options;
-  make_subcommand "update"      "APP | URI"                     fallback_handler @@ common_options @ update_options @ offline_options @ generic_select_options;
+  make_subcommand "update"      "APP | URI"                     Update.handle    @@ common_options @ update_options @ offline_options @ generic_select_options;
   make_subcommand "whatchanged" "APP-NAME"                      fallback_handler @@ common_options @ diff_options;
   make_subcommand "destroy"     "PET-NAME"                      fallback_handler @@ common_options;
   make_subcommand "config"      "[NAME [VALUE]]"                fallback_handler @@ common_options;
