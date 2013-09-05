@@ -22,8 +22,9 @@ let get_values map = StringMap.fold (fun _key value xs -> value :: xs) map []
     Note: if we find we need to download anything, we will refresh everything.
 
     @param force re-download all feeds, even if we're ready to run (implies update_local)
+    @param watcher notify of each partial solve (used by the GUI to show the current state)
     @param update_local fetch PackageKit feeds even if we're ready to run *)
-let solve_with_downloads config fetcher distro requirements ~force ~update_local : (bool * Solver.result) =
+let solve_with_downloads config fetcher distro ?feed_provider ?watcher requirements ~force ~update_local : (bool * Solver.result) =
   let force = ref force in
   let seen = ref StringSet.empty in
   let downloads_in_progress = ref StringMap.empty in
@@ -40,7 +41,10 @@ let solve_with_downloads config fetcher distro requirements ~force ~update_local
      3. The user explicitly asked us to refresh everything.
         (force = True) *)
 
-  let feed_provider = new Feed_cache.feed_provider config distro in
+  let feed_provider =
+    match feed_provider with
+    | Some feed_provider -> feed_provider
+    | None -> new Feed_cache.feed_provider config distro in
 
   (* Add [url] to [downloads_in_progress]. When [download] resolves (to a function),
      call it in the main thread. *)
@@ -53,7 +57,10 @@ let solve_with_downloads config fetcher distro requirements ~force ~update_local
         log_info "Download of feed '%s' finished" url;
         Lwt.return (url, fn)
       with ex ->
-        log_warning ~ex "Feed download %s failed" url;
+        let () =
+          match watcher with
+          | Some watcher -> watcher#report ex
+          | None -> log_warning ~ex "Feed download %s failed" url in
         Lwt.return (url, fun () -> ()) in
     downloads_in_progress := StringMap.add url wrapped !downloads_in_progress
     in
@@ -62,7 +69,10 @@ let solve_with_downloads config fetcher distro requirements ~force ~update_local
     (* Called once at the start, and once for every feed that downloads (or fails to download). *)
     let result = Solver.solve_for config feed_provider requirements in
 
-    (* for w in self.watchers: w() *)
+    let () =
+      match watcher with
+      | Some watcher -> watcher#update result
+      | None -> () in
 
     match result with
     | (true, _) when try_quick_exit ->

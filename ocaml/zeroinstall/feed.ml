@@ -32,6 +32,7 @@ type importance =
 type package_impl = {
   package_distro : string;
   package_installed : bool;
+  retrieval_method : (string * Yojson.Basic.json) list option;
 }
 
 type cache_impl = {
@@ -147,12 +148,15 @@ let attr_command = "command"
 let attr_main = "main"
 let attr_self_test = "self-test"
 let attr_stability = "stability"
+let attr_user_stability = "user-stability"
 let attr_importance = "importance"
 let attr_version = "version"
 let attr_version_modifier = "version-modifier"      (* This is stripped out and moved into attr_version *)
+let attr_released = "released"
 let attr_os= "os"
 let attr_use = "use"
 let attr_local_path = "local-path"
+let attr_langs = "langs"
 let attr_interface = "interface"
 let attr_src = "src"
 let attr_from_feed = "from-feed"
@@ -357,7 +361,7 @@ let parse system root feed_local_path =
     | None -> (None, None)
     | Some arch -> Arch.parse_arch arch in
 
-    let feed_langs = match ZI.get_attribute_opt "langs" node with
+    let feed_langs = match ZI.get_attribute_opt attr_langs node with
     | None -> None
     | Some langs -> Some (Str.split U.re_space langs) in
 
@@ -594,7 +598,7 @@ let load_feed_overrides config url =
 
       ZI.iter_with_name root "implementation" ~f:(fun impl ->
         let id = ZI.get_attribute "id" impl in
-        match ZI.get_attribute_opt attr_stability impl with
+        match ZI.get_attribute_opt attr_user_stability impl with
         | None -> ()
         | Some s -> stability := StringMap.add id (parse_stability ~from_user:true s) !stability
       );
@@ -635,3 +639,11 @@ let is_retrievable_without_network cache_impl =
   List.exists ok_without_network cache_impl.retrieval_methods
 
 let get_id impl = {feed = get_attr attr_from_feed impl; id = get_attr attr_id impl}
+
+let get_summary feed =
+  let best = ref None in
+  ZI.iter_with_name feed.root "summary" ~f:(fun elem ->
+    if !best = None then
+      best := Some (elem.Qdom.last_text_inside)     (* TODO: select best language *)
+  );
+  !best

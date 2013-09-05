@@ -3,7 +3,7 @@
 
 import gtk
 import sys
-from logging import info, warn
+from logging import info, warning
 
 from zeroinstall import _, translation
 from zeroinstall import SafeException
@@ -29,13 +29,14 @@ class MainWindow(object):
 	systray_icon = None
 	systray_icon_blocker = None
 
-	def __init__(self, driver, widgets, download_only, select_only = False):
+	def __init__(self, driver, widgets, download_only, resolve, select_only = False):
 		self.driver = driver
 		self.select_only = select_only
+		self.resolve = resolve
 
 		def update_ok_state():
-			self.window.set_response_sensitive(gtk.RESPONSE_OK, driver.solver.ready)
-			if driver.solver.ready and self.window.get_focus() is None:
+			self.window.set_response_sensitive(gtk.RESPONSE_OK, driver.ready)
+			if driver.ready and self.window.get_focus() is None:
 				run_button.grab_focus()
 		driver.watchers.append(update_ok_state)
 
@@ -75,8 +76,7 @@ class MainWindow(object):
 
 		def response(dialog, resp):
 			if resp in (gtk.RESPONSE_CANCEL, gtk.RESPONSE_DELETE_EVENT):
-				self.window.destroy()
-				sys.exit(1)
+				resolve("cancel")
 			elif resp == gtk.RESPONSE_OK:
 				if self.cancel_download_and_run:
 					self.cancel_download_and_run.trigger()
@@ -123,16 +123,7 @@ class MainWindow(object):
 				missing = '\n- '.join([_('%(iface_name)s %(impl_version)s') % {'iface_name': iface.get_name(), 'impl_version': impl.get_version()} for iface, impl in uncached])
 				dialog.alert(self.window, _('Not all downloads succeeded; cannot run program.\n\nFailed to get:') + '\n- ' + missing)
 			else:
-				sels = self.driver.solver.selections
-				doc = sels.toDOM()
-				reply = doc.toxml('utf-8')
-				if sys.version_info[0] > 2:
-					stdout = sys.stdout.buffer
-				else:
-					stdout = sys.stdout
-				stdout.write(('Length:%8x\n' % len(reply)).encode('utf-8') + reply)
-				self.window.destroy()
-				sys.exit(0)			# Success
+				self.resolve("ok")
 		except SystemExit:
 			raise
 		except download.DownloadAborted as ex:
@@ -145,6 +136,7 @@ class MainWindow(object):
 	def update_download_status(self, only_update_visible = False):
 		"""Called at regular intervals while there are downloads in progress,
 		and once at the end. Update the display."""
+		if not self.window: return		# (being destroyed)
 		monitored_downloads = self.driver.config.handler.monitored_downloads
 
 		self.browser.update_download_status(only_update_visible)
@@ -218,9 +210,9 @@ class MainWindow(object):
 	def report_exception(self, ex, tb = None):
 		if not isinstance(ex, SafeException):
 			if tb is None:
-				warn(ex, exc_info = True)
+				warning(ex, exc_info = True)
 			else:
-				warn(ex, exc_info = (type(ex), ex, tb))
+				warning(ex, exc_info = (type(ex), ex, tb))
 			if isinstance(ex, AssertionError):
 				# Assertions often don't say that they're errors (and are frequently
 				# blank).

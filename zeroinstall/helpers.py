@@ -8,8 +8,8 @@ Convenience routines for performing common operations.
 
 from __future__ import print_function
 
-import os, sys
-from zeroinstall import support, SafeException, logger
+import os
+from zeroinstall import SafeException, logger
 from zeroinstall.support import tasks
 
 DontUseGUI = object()
@@ -52,87 +52,28 @@ def get_selections_gui(iface_uri, gui_args, test_callback = None, use_gui = True
 	if not should_use_gui(use_gui):
 		return DontUseGUI
 
-	from zeroinstall.injector import selections, qdom
-	from io import BytesIO
+	if use_gui is True:
+		gui_args = ['-g'] + gui_args
+	assert iface_uri is not None
+	gui_args = gui_args + ['--', iface_uri]
 
-	from os.path import join, dirname
-	gui_exe = join(dirname(__file__), 'gui', '0launch-gui')
+	from zeroinstall.gui import main
+	return main.run_gui(gui_args)		# XXX: cancel?
 
-	import socket
-	cli, gui = socket.socketpair()
-
-	try:
-		child = os.fork()
-		if child == 0:
-			# We are the child (GUI)
-			try:
-				try:
-					cli.close()
-					# We used to use pipes to support Python2.3...
-					os.dup2(gui.fileno(), 1)
-					os.dup2(gui.fileno(), 0)
-					if use_gui is True:
-						gui_args = ['-g'] + gui_args
-					if iface_uri is not None:
-						gui_args = gui_args + ['--', iface_uri]
-					os.execvp(sys.executable, [sys.executable, gui_exe] + gui_args)
-				except:
-					import traceback
-					traceback.print_exc(file = sys.stderr)
-			finally:
-				sys.stderr.flush()
-				os._exit(1)
-		# We are the parent (CLI)
-		gui.close()
-		gui = None
-
-		while True:
-			logger.info("Waiting for selections from GUI...")
-
-			reply = support.read_bytes(cli.fileno(), len('Length:') + 9, null_ok = True)
-			if reply:
-				if not reply.startswith(b'Length:'):
-					raise Exception("Expected Length:, but got %s" % repr(reply))
-				reply = reply.decode('ascii')
-				xml = support.read_bytes(cli.fileno(), int(reply.split(':', 1)[1], 16))
-
-				dom = qdom.parse(BytesIO(xml))
-				sels = selections.Selections(dom)
-
-				if dom.getAttribute('run-test'):
-					logger.info("Testing program, as requested by GUI...")
-					if test_callback is None:
-						output = b"Can't test: no test_callback was passed to get_selections_gui()\n"
-					else:
-						output = test_callback(sels)
-					logger.info("Sending results to GUI...")
-					output = ('Length:%8x\n' % len(output)).encode('utf-8') + output
-					logger.debug("Sending: %s", repr(output))
-					while output:
-						sent = cli.send(output)
-						output = output[sent:]
-					continue
+	if 0: # XXX
+		if dom.getAttribute('run-test'):
+			logger.info("Testing program, as requested by GUI...")
+			if test_callback is None:
+				output = b"Can't test: no test_callback was passed to get_selections_gui()\n"
 			else:
-				sels = None
-
-			pid, status = os.waitpid(child, 0)
-			assert pid == child
-			if status == 1 << 8:
-				logger.info("User cancelled the GUI; aborting")
-				return None		# Aborted
-			elif status == 100 << 8:
-				if use_gui is None:
-					return DontUseGUI
-				else:
-					raise SafeException("No GUI available")
-			if status != 0:
-				raise Exception("Error from GUI: code = %d" % status)
-			break
-	finally:
-		for sock in [cli, gui]:
-			if sock is not None: sock.close()
-	
-	return sels
+				output = test_callback(sels)
+			logger.info("Sending results to GUI...")
+			output = ('Length:%8x\n' % len(output)).encode('utf-8') + output
+			logger.debug("Sending: %s", repr(output))
+			while output:
+				sent = cli.send(output)
+				output = output[sent:]
+			continue
 
 def ensure_cached(uri, command = 'run', config = None):
 	"""Ensure that an implementation of uri is cached.
@@ -156,9 +97,10 @@ def ensure_cached(uri, command = 'run', config = None):
 	d = Driver(config, requirements)
 
 	if d.need_download() or not d.solver.ready:
-		sels = get_selections_gui(uri, ['--command', command], use_gui = None)
-		if sels != DontUseGUI:
-			return sels
+		finished = get_selections_gui(uri, ['--command', command], use_gui = None)
+		if finished != DontUseGUI:
+			tasks.wait_for_blocker(finished)
+			return finished.gui_result
 		done = d.solve_and_download_impls()
 		tasks.wait_for_blocker(done)
 
