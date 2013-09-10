@@ -11,7 +11,7 @@ import sys, os
 
 from zeroinstall import _, logger, SafeException
 from zeroinstall.cmd import UsageError
-from zeroinstall.injector import model, qdom, selections
+from zeroinstall.injector import model, qdom, selections, download
 from zeroinstall.injector.requirements import Requirements
 from zeroinstall.support import tasks
 from zeroinstall import support
@@ -184,10 +184,20 @@ def do_get_distro_candidates(config, args, xml):
 
 	return config.iface_cache.distro.fetch_candidates(master_feed)
 
-def do_download_and_import_feed(config, args):
-	if gui_driver is not None: config = gui_driver.config
-	feed_url, = args
-	return config.fetcher.download_and_import_feed(feed_url)
+@tasks.async
+def do_download_and_import_feed(config, ticket, args):
+	try:
+		if gui_driver is not None: config = gui_driver.config
+		feed_url, = args
+		blocker = config.fetcher.download_and_import_feed(feed_url)
+		if blocker:
+			yield blocker
+			tasks.check(blocker)
+		send_json(["return", ticket, ["ok", "success"]])
+	except download.DownloadAborted as ex:
+		send_json(["return", ticket, ["ok", "aborted-by-user"]])
+	except Exception as ex:
+		send_json(["return", ticket, ["error", str(ex)]])
 
 @tasks.async
 def reply_when_done(ticket, blocker):
@@ -318,8 +328,7 @@ def handle_invoke(config, options, ticket, request):
 			reply_when_done(ticket, blocker)
 			return	# async
 		elif command == 'download-and-import-feed':
-			blocker = do_download_and_import_feed(config, request[1:])
-			reply_when_done(ticket, blocker)
+			do_download_and_import_feed(config, ticket, request[1:])
 			return	# async
 		elif command == 'notify-user':
 			response = do_notify_user(config, request[1])
