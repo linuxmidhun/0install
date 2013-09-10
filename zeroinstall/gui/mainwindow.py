@@ -8,7 +8,7 @@ from logging import info, warning
 from zeroinstall import _, translation
 from zeroinstall import SafeException
 from zeroinstall.support import tasks, pretty_size
-from zeroinstall.injector import download, iface_cache
+from zeroinstall.injector import download, iface_cache, selections
 from zeroinstall.gui.iface_browser import InterfaceBrowser
 from zeroinstall.gui import dialog
 from zeroinstall.gtkui import gtkutils
@@ -104,7 +104,9 @@ class MainWindow(object):
 	def download_and_run(self, run_button, cancelled):
 		try:
 			if not self.select_only:
-				downloaded = self.driver.download_uncached_implementations()
+				assert self.driver.ready, "Solver is not ready!"
+				sels = selections.Selections(self.driver.sels)
+				downloaded = sels.download_missing(self.driver.config, include_packages = True)
 
 				if downloaded:
 					# We need to wait until everything is downloaded...
@@ -115,7 +117,7 @@ class MainWindow(object):
 					if cancelled.happened:
 						return
 
-				uncached = self.driver.get_uncached_implementations()
+				uncached = sels.get_unavailable_selections(self.driver.config, include_packages = True)
 			else:
 				uncached = None		# (we don't care)
 

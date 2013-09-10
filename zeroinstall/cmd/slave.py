@@ -38,7 +38,7 @@ else:
 
 def read_chunk():
 	l = support.read_bytes(0, 8, null_ok = True)
-	logger.warning("Read '%s' from master", l)
+	logger.debug("Read '%s' from master", l)
 	if not l: return None
 	return support.read_bytes(0, int(l, 16))
 
@@ -157,7 +157,7 @@ def recv_json():
 		sys.stdout = sys.stderr
 		return None
 	data = data.decode('utf-8')
-	logger.warning("Read '%s' from master", data)
+	logger.debug("Read '%s' from master", data)
 	return json.loads(data)
 
 pending_replies = {}		# Ticket -> callback function
