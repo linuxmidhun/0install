@@ -139,7 +139,8 @@ class MainWindow(object):
 	def update_download_status(self, only_update_visible = False):
 		"""Called at regular intervals while there are downloads in progress,
 		and once at the end. Update the display."""
-		if not self.window: return		# (being destroyed)
+		if not self.window: return			# (being destroyed)
+		if not self.window.get_window(): return		# (being destroyed)
 		monitored_downloads = self.driver.config.handler.monitored_downloads
 
 		self.browser.update_download_status(only_update_visible)
