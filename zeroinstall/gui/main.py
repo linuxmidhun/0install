@@ -75,8 +75,9 @@ def gui_is_available(force_gui):
 	return False
 
 class OCamlDriver:
-	def __init__(self, config):
+	def __init__(self, config, requirements):
 		self.config = config
+		self.requirements = requirements
 		self.watchers = []
 
 	def set_selections(self, ready, tree, sels):
@@ -164,7 +165,7 @@ def open_gui(args):
 		finished.gui_result = result
 		finished.trigger()
 
-	driver = OCamlDriver(config)
+	driver = OCamlDriver(config, r)
 
 	window = mainwindow.MainWindow(driver, widgets, download_only = bool(options.download_only), resolve = resolve, select_only = bool(options.select_only))
 	handler.mainwindow = window
@@ -199,7 +200,7 @@ def open_gui(args):
 
 		if window.systray_icon and window.systray_icon.get_visible() and \
 		   window.systray_icon.is_embedded():
-			if driver.solver.ready:
+			if driver.ready:
 				window.systray_icon.set_tooltip(_('Downloading updates for %s') % root_iface.get_name())
 				window.run_button.set_active(True)
 			else:
