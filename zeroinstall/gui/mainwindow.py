@@ -76,11 +76,13 @@ class MainWindow(object):
 
 		def response(dialog, resp):
 			if resp in (gtk.RESPONSE_CANCEL, gtk.RESPONSE_DELETE_EVENT):
+				self.driver.config.handler.abort_all_downloads()
 				resolve("cancel")
 			elif resp == gtk.RESPONSE_OK:
 				if self.cancel_download_and_run:
 					self.cancel_download_and_run.trigger()
 				if run_button.get_active():
+					self.driver.config.handler.abort_all_downloads()
 					self.cancel_download_and_run = tasks.Blocker("cancel downloads")
 					self.download_and_run(run_button, self.cancel_download_and_run)
 			elif resp == gtk.RESPONSE_HELP:
