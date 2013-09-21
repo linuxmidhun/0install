@@ -7,6 +7,7 @@
 val get_selections_gui :
   General.config ->
   Python.slave ->
+  fetcher:Fetch.fetcher ->
   ?test_callback:(Support.Qdom.element -> string Lwt.t) ->
   Distro.distribution ->
   ?systray:bool ->

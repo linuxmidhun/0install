@@ -437,7 +437,7 @@ class Selections(object):
 			needed_impls = []
 			for sel in needed_downloads:
 				feed_url = sel.attrs.get('from-feed', None) or sel.attrs['interface']
-				feed = iface_cache.get_feed(feed_url)
+				feed = iface_cache.get_feed(feed_url, force = True)	# (force for OCaml)
 				if feed is None or sel.id not in feed.implementations:
 					fetch_feed = config.fetcher.download_and_import_feed(feed_url, iface_cache)
 					yield fetch_feed

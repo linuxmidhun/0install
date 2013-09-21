@@ -29,15 +29,21 @@ let download_selections fetcher ?distro sels =
 (** Get some selectsions for these requirements.
     Returns [None] if the user cancels.
     @raise Safe_exception if the solve fails. *)
-let solve_and_download_impls config distro (slave:Python.slave) ?test_callback reqs mode ~refresh ~use_gui =
+let solve_and_download_impls config distro (slave:Python.slave) ?fetcher ?test_callback reqs mode ~refresh ~use_gui =
   let use_gui =
     match use_gui, config.dry_run with
     | Yes, true -> raise_safe "Can't use GUI with --dry-run"
     | (Maybe|No), true -> No
     | use_gui, false -> use_gui in
 
+  let fetcher =
+    match fetcher with
+    | Some fetcher -> fetcher
+    | None ->
+        let trust_db = new Trust.trust_db config in
+        new Fetch.fetcher config trust_db slave in
+
   let solve_without_gui () =
-    let fetcher = new Fetch.fetcher config slave in
     let result = Driver.solve_with_downloads config fetcher distro reqs ~force:refresh ~update_local:refresh in
     match result with
     | (false, result) -> raise_safe "%s" (Diagnostics.get_failure_reason config result)
@@ -50,7 +56,7 @@ let solve_and_download_impls config distro (slave:Python.slave) ?test_callback r
               download_selections fetcher ~distro sels in
         Some sels in
 
-  match Gui.get_selections_gui config slave ?test_callback distro mode reqs ~refresh ~use_gui with
+  match Gui.get_selections_gui config slave ~fetcher ?test_callback distro mode reqs ~refresh ~use_gui with
   | `Success sels -> Some sels
   | `Aborted_by_user -> None
   | `Dont_use_GUI -> solve_without_gui ()

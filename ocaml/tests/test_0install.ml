@@ -58,35 +58,34 @@ let expect = function
   | Some x -> x
 
 class fake_slave config =
+  let temp_dir = List.hd config.basedirs.Support.Basedir.cache in
   let pending_feed_downloads = ref StringMap.empty in
   let pending_digests = ref StringSet.empty in
   let system = config.system in
+  let trust_db = new Zeroinstall.Trust.trust_db config in
 
-  let cache_path_for url =
-    let cache = config.basedirs.Support.Basedir.cache in
-    let dir = Support.Basedir.save_path system (config_site +/ "interfaces") cache in
-    dir +/ Escape.escape url in
-
-  let handle_import_feed url =
+  let handle_download_url url =
     let contents =
       try StringMap.find url !pending_feed_downloads
       with Not_found -> assert_failure url in
     pending_feed_downloads := StringMap.remove url !pending_feed_downloads;
-    let target = cache_path_for url in
-    system#atomic_write [Open_wronly; Open_binary] target ~mode:0o644 (fun ch ->
+    let tmpname = Filename.temp_file ~temp_dir "0install-" "-test" in
+    system#atomic_write [Open_wronly; Open_binary] tmpname ~mode:0o644 (fun ch ->
       output_string ch contents
     );
-    `List [`String "ok"; `List [`String "success"; `String contents]] in
+    `List [`String "ok"; `List [`String "success"; `String tmpname]] in
 
   let fake_slave ?xml request =
     match request with
-    | `List [`String "download-and-import-feed"; `String url; `Bool use_mirror; timeout] ->
-        if use_mirror then Some (Lwt.return `Null)
-        else (
-          let start_timeout = StringMap.find "start-timeout" !Zeroinstall.Python.handlers in
+    | `List [`String "confirm-keys"; `String _url; `List fingerprints] ->
+        assert (fingerprints <> []);
+        fingerprints |> List.iter (fun x -> Yojson.Basic.Util.to_string x |> trust_db#trust_key ~domain:"*");
+        Some (`List [`String "ok"; `Null] |> Lwt.return)
+    | `List [`String "download-url"; `String url; `String _hint; timeout] ->
+        let start_timeout = StringMap.find "start-timeout" !Zeroinstall.Python.handlers in
+        if timeout <> `Null then
           ignore @@ start_timeout [timeout];
-          Some (Lwt.return @@ handle_import_feed url)
-        )
+        Some (Lwt.return @@ handle_download_url url)
     | `List [`String "download-selections"; _opts] -> Some (Lwt.return @@ handle_download_selections config pending_digests (expect xml))
     | _ -> None in
 
@@ -182,10 +181,12 @@ let suite = "0install">::: [
     fake_slave#install;
 
     let binary_feed = Support.Utils.read_file system (feed_dir +/ "Binary.xml") in
+    let test_key = Support.Utils.read_file system (feed_dir +/ "6FCF121BE2390E0B.gpg") in
 
     (* Using a remote feed for the first time *)
     fake_slave#allow_download "sha1=123";
     fake_slave#allow_feed_download "http://foo/Binary.xml" binary_feed;
+    fake_slave#allow_feed_download "http://foo/6FCF121BE2390E0B.gpg" test_key;
     let out = run ["update"; "http://foo/Binary.xml"] in
     assert_contains "Binary.xml: new -> 1.0" out;
 
@@ -196,9 +197,8 @@ let suite = "0install">::: [
     assert_contains "No updates found" out;
 
     (* New binary release available. *)
-    let new_binary_feed = Str.replace_first (Str.regexp_string "version='1.0'") "version='1.1'" binary_feed in
-    assert (binary_feed <> new_binary_feed);
-    fake_slave#allow_feed_download "http://foo/Binary.xml" new_binary_feed;
+    let binary_feed = Support.Utils.read_file system (feed_dir +/ "Binary2.xml") in
+    fake_slave#allow_feed_download "http://foo/Binary.xml" binary_feed;
     let out = run ["update"; "http://foo/Binary.xml"] in
     assert_contains "Binary.xml: 1.0 -> 1.1" out;
 
@@ -215,8 +215,7 @@ let suite = "0install">::: [
     assert_contains "Compiler.xml: new -> 1.0" out;
 
     (* New compiler released. *)
-    let new_compiler_feed = Str.replace_first (Str.regexp_string "id='sha1=345' version='1.0'") "id='sha1=345' version='1.1'" compiler_feed in
-    assert (new_compiler_feed <> compiler_feed);
+    let new_compiler_feed = U.read_file system (feed_dir +/ "Compiler2.xml") in
     fake_slave#allow_feed_download "http://foo/Compiler.xml" new_compiler_feed;
     fake_slave#allow_feed_download "http://foo/Binary.xml" binary_feed;
     fake_slave#allow_feed_download "http://foo/Source.xml" source_feed;
@@ -296,7 +295,7 @@ let suite = "0install">::: [
     (* --dry-run must prevent us from using the GUI *)
     fake_system#putenv "DISPLAY" ":foo";
     Zeroinstall.Python.slave_interceptor := (fun ?xml:_ -> function
-      | `List [`String "download-and-import-feed"; `String "http://foo/d"; `Bool _; _] -> raise Ok
+      | `List [`String "download-url"; `String "http://foo/d"; `String _hint; `String _timeout] -> raise Ok
       | json -> failwith (Yojson.Basic.to_string json)
     );
     try ignore @@ run ["run"; "--dry-run"; "--refresh"; "http://foo/d"]; assert false
@@ -308,7 +307,7 @@ let suite = "0install">::: [
     let system = (fake_system :> system) in
     let run = run_0install fake_system in
 
-    fake_system#set_time @@ Fake_system.real_system#time ();
+    fake_system#set_time @@ Fake_system.real_system#time;
 
     let out = run ~exit:1 ["add"; "local-app"] in
     assert (U.starts_with out "Usage:");

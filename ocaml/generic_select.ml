@@ -270,7 +270,8 @@ let handle options flags arg ?test_callback for_op =
       let new_sels = if select_opts.must_select then do_select reqs else (
         if for_op = `Select_only then old_sels else (
           (* Download if missing. Ignore distribution packages, because the version probably won't match exactly. *)
-          let fetcher = new Zeroinstall.Fetch.fetcher config options.slave in
+          let trust_db = new Zeroinstall.Trust.trust_db config in
+          let fetcher = new Zeroinstall.Fetch.fetcher config trust_db options.slave in
           Zeroinstall.Helpers.download_selections fetcher old_sels;
           old_sels
         )

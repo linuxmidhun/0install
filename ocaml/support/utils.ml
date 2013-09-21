@@ -206,6 +206,7 @@ let getenv_ex system name =
   | None -> raise_safe "Environment variable '%s' not set" name
 
 let re_dash = Str.regexp_string "-"
+let re_slash = Str.regexp_string "/"
 let re_space = Str.regexp_string " "
 let re_tab = Str.regexp_string "\t"
 let re_dir_sep = Str.regexp_string Filename.dir_sep   (** / on Unix *)
@@ -522,7 +523,7 @@ let is_dir system path =
 
 let touch (system:system) path =
   system#with_open_out [Open_wronly; Open_creat] 0o600 path (fun _ch -> ());
-  system#set_mtime path @@ system#time ()   (* In case file already exists *)
+  system#set_mtime path @@ system#time   (* In case file already exists *)
 
 let read_file (system:system) path =
   match system#stat path with

@@ -76,7 +76,7 @@ class fake_system tmpdir =
   (* Prevent reading from $HOME, except for the code we're testing (to avoid accidents, e.g. reading user's config files).
    * Also, apply any redirections in extra_files. *)
   let check_read path =
-    log_info "check_read(%s)" path;
+    (* log_info "check_read(%s)" path; *)
     if Filename.is_relative path then path
     else (
       try
@@ -97,7 +97,7 @@ class fake_system tmpdir =
   let check_write path =
     match tmpdir with
     | Some dir when U.starts_with path dir -> path
-    | _ -> raise_safe "Attempt to write to '%s'" path in
+    | _ -> failwith @@ Printf.sprintf "Attempt to write to '%s'" path in
 
   (* It's OK to check whether these paths exists. We just say they don't,
      unless they're in extra_files (check there first). *)
@@ -131,7 +131,7 @@ class fake_system tmpdir =
     method argv () = argv
     method set_argv new_argv = argv <- new_argv
 
-    method time () = !now
+    method time = !now
     method set_time t = now := t
 
     method set_mtime path mtime = real_system#set_mtime (check_write path) mtime
